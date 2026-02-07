@@ -1,0 +1,43 @@
+package PlainEnglish;
+
+public class TextManager
+{
+    private final /*readonly*/ String text;
+    private int position;
+
+    public TextManager(String input)
+    {
+        position = 0;
+        text = input;
+    }
+    
+    public boolean isAtEnd() {
+		return position >= text.length();
+   }
+    
+    public char peekCharacter() {
+		
+    	if(isAtEnd()) {
+    		return '\0';
+    	}
+    	return text.charAt(position);
+   }
+    
+   public int peekCharacter(int distance) {
+	   
+	   int index = position + distance;
+	   
+	   if(index >= text.length()) {
+		   return '\0';
+	   }
+	   return text.charAt(index);
+   }
+    
+   public char getCharacter() {
+	   
+	   if(isAtEnd()) {
+   		return '\0';
+   	}
+	   return text.charAt(position++);
+   }
+}
