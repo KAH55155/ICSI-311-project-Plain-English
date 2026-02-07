@@ -1,0 +1,19 @@
+package PlainEnglish;
+import java.util.*;
+public class Lexer {
+    public Lexer(String input) {
+        tm = new TextManager(input);
+    }
+    
+   public List<Token> lex(){
+	   return null;
+   }
+    
+    private int lineNumber = 0;
+    private int characterPosition = 0;
+    private final TextManager tm;
+    
+    public Token readWord(){
+    	return null;	
+    }
+}
