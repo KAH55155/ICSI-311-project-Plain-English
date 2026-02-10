@@ -23,7 +23,7 @@ public class TextManager
     	return text.charAt(position);
    }
     
-   public int peekCharacter(int distance) {
+   public char peekCharacter(int distance) {
 	   
 	   int index = position + distance;
 	   
