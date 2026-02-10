@@ -1,19 +1,101 @@
 package PlainEnglish;
 import java.util.*;
+import PlainEnglish.Token.TokenTypes;
+
+
 public class Lexer {
+	
+    private final TextManager tm;
+	private List<Token> tokens;
+	private HashMap<String, TokenTypes> keywords;
+	
     public Lexer(String input) {
         tm = new TextManager(input);
-    }
+        tokens = new ArrayList<>();
+        keywords = new HashMap<>();
+        
+
+
+        keywords.put("A", TokenTypes.A);
+        keywords.put("is", TokenTypes.IS);
+        keywords.put("To", TokenTypes.TO);
+        keywords.put("with", TokenTypes.WITH);
+        keywords.put("Set", TokenTypes.SET);
+        keywords.put("If", TokenTypes.IF);
+        keywords.put("true", TokenTypes.TRUE);
+        keywords.put("false", TokenTypes.FALSE);
+        keywords.put("else", TokenTypes.ELSE);
+        keywords.put("Make", TokenTypes.MAKE);
+        keywords.put("named", TokenTypes.NAMED);
+        keywords.put("Loop", TokenTypes.LOOP);
+        keywords.put("or", TokenTypes.OR);
+        keywords.put("and", TokenTypes.AND);
+        keywords.put("not", TokenTypes.NOT);
+        keywords.put("An", TokenTypes.AN);
+        
+        
+      
+}
     
-   public List<Token> lex(){
-	   return null;
+   
+private Token readWord(){
+    	
+    	StringBuilder buffer = new StringBuilder();
+    	
+    	while(!tm.isAtEnd() && Character.isLetterOrDigit(tm.peekCharacter())) {
+    		buffer.append(tm.getCharacter());
+    	}
+    	String word = buffer.toString();
+    	
+    	if(keywords.containsKey(word)) {
+    		return new Token(keywords.get(word), 0,0);
+    	}
+    	return new Token(TokenTypes.IDENTIFIER, 0, 0,word);
    }
+
+ private Token readStrings() {
+	tm.getCharacter();
+	 
+	 StringBuilder buffer = new StringBuilder();
+	 
+	 while(!tm.isAtEnd() && Character.isLetterOrDigit(tm.peekCharacter())) {
+ 		buffer.append(tm.getCharacter());
+	 }
+	 String word = buffer.toString();
+	 
+	 if(keywords.containsKey(word)) {
+ 		return new Token(keywords.get(word), 0,0);
+ 	}
+ 	return new Token(TokenTypes.STRINGLITERAL, 0, 0,word);
+	 
+}
     
-    private int lineNumber = 0;
-    private int characterPosition = 0;
-    private final TextManager tm;
-    
-    public Token readWord(){
-    	return null;	
-    }
+    public List<Token> lex(){
+	   
+    	tokens = new ArrayList<>();
+    	
+	   while(!tm.isAtEnd()) {
+		   
+		   char c = tm.peekCharacter();
+		   
+		   if(c==' ') {
+			   tm.getCharacter();
+		   } else if(c=='\t') {
+			   tm.getCharacter();
+		   } else if(c=='\r') {
+			   tm.getCharacter();
+		   } else if(c=='\n') {
+			   tm.getCharacter();
+			   tokens.add(new Token(TokenTypes.NEWLINE, 0, 0));
+		   }else if(c=='"') {
+			   tokens.add(readStrings());
+		   }else if(Character.isLetter(c)) {
+			   tokens.add(readWord());
+		   }else {
+			   tm.getCharacter();
+		   }
+	}
+	   tokens.add(new Token(TokenTypes.NEWLINE, 0, 0));
+	return tokens;
+   }
 }
