@@ -13,12 +13,12 @@ public class Lexer {
         tm = new TextManager(input);
         tokens = new ArrayList<>();
         keywords = new HashMap<>();
-        
-
 
         keywords.put("A", TokenTypes.A);
+        keywords.put("a", TokenTypes.A);
         keywords.put("is", TokenTypes.IS);
         keywords.put("To", TokenTypes.TO);
+        keywords.put("to", TokenTypes.TO);
         keywords.put("with", TokenTypes.WITH);
         keywords.put("Set", TokenTypes.SET);
         keywords.put("If", TokenTypes.IF);
@@ -32,9 +32,6 @@ public class Lexer {
         keywords.put("and", TokenTypes.AND);
         keywords.put("not", TokenTypes.NOT);
         keywords.put("An", TokenTypes.AN);
-        
-        
-      
 }
     
    
@@ -66,8 +63,7 @@ private Token readWord(){
 	 if(keywords.containsKey(word)) {
  		return new Token(keywords.get(word), 0,0);
  	}
- 	return new Token(TokenTypes.STRINGLITERAL, 0, 0,word);
-	 
+ 	return new Token(TokenTypes.STRINGLITERAL, 0, 0);
 }
     
     public List<Token> lex(){
@@ -80,14 +76,11 @@ private Token readWord(){
 		   
 		   if(c==' ') {
 			   tm.getCharacter();
-		   } else if(c=='\t') {
-			   tm.getCharacter();
-		   } else if(c=='\r') {
-			   tm.getCharacter();
-		   } else if(c=='\n') {
+		   } 
+		   else if(c=='\n') {
 			   tm.getCharacter();
 			   tokens.add(new Token(TokenTypes.NEWLINE, 0, 0));
-		   }else if(c=='"') {
+		   }else if(c=='/') {
 			   tokens.add(readStrings());
 		   }else if(Character.isLetter(c)) {
 			   tokens.add(readWord());
