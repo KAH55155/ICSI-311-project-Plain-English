@@ -4,20 +4,20 @@ import PlainEnglish.Token.TokenTypes;
 
 
 public class Lexer {
-	
+
     private final TextManager tm;
-	private List<Token> tokens;
-	private HashMap<String, TokenTypes> keywords;
-	private int linePosition = 0;
-	private int characterPosition = 0;
-	private Stack<Integer> indentStack = new Stack<>();
-	private boolean atStartofLine = true;
-	
+    private List<Token> tokens;
+    private HashMap<String, TokenTypes> keywords;
+    private int linePosition = 1;
+    private int characterPosition = 0;
+    private Stack<Integer> indentStack = new Stack<>();
+    private boolean atStartofLine = true;
+
     public Lexer(String input) {
         tm = new TextManager(input);
         tokens = new ArrayList<>();
         keywords = new HashMap<>();
-        
+
         indentStack.push(0);
 
         keywords.put("A", TokenTypes.A);
@@ -39,258 +39,300 @@ public class Lexer {
         keywords.put("not", TokenTypes.NOT);
         keywords.put("An", TokenTypes.AN);
         keywords.put("Else", TokenTypes.ELSE);
-        
-}
-    
-private Token readWord(){
-    	
-	 int startLine = linePosition;
-	 int startCharacter = characterPosition;
-	
-    	StringBuilder buffer = new StringBuilder();
-    	
-    	while(!tm.isAtEnd() && Character.isLetterOrDigit(tm.peekCharacter())) {
-    		buffer.append(tm.getCharacter());
-    		characterPosition++;
-    	}
-    	String word = buffer.toString();
-    	
-    	if(keywords.containsKey(word)) {
-    		return new Token(keywords.get(word), startLine,startCharacter);
-    	}
-    	return new Token(TokenTypes.IDENTIFIER, startLine, startCharacter,word);
-   }
+    }
 
- private Token readStrings() throws Exception {
-	 
-	 int startLine = linePosition;
-	 int startCharacter = characterPosition;
-	 
-	tm.getCharacter();
-	characterPosition++;
-	 
-	 StringBuilder buffer = new StringBuilder();
-	 
-	 while(!tm.isAtEnd() && tm.peekCharacter()!= '"') {
- 		
-		 char c = tm.getCharacter();
-		 
-		 if(c =='\n') {
-			 linePosition++;
-			 characterPosition = 0;
-		 }else {
-			 characterPosition++;
-		 }
-		 buffer.append(c);
-	 }
+    private Token readWord(){
 
-	 
-	 if(tm.isAtEnd()) {
- 		throw new Exception("Incomplete String");
- 	}
-	 tm.getCharacter();
-	 characterPosition++;
- 	return new Token(TokenTypes.STRINGLITERAL, startLine, startCharacter,buffer.toString());
-}
- 
- private Token readNumbers(){
-	 
-	 int startLine = linePosition;
-	 int startCharacter = characterPosition;
-	 
-	 StringBuilder buffer = new StringBuilder();
-	 
-	 while(!tm.isAtEnd() && Character.isDigit(tm.peekCharacter())) {
-		 buffer.append(tm.getCharacter());
-		 characterPosition++;
-	 }
-	 return new Token(TokenTypes.NUMBER, startLine, startCharacter, buffer.toString());
- }
-    
- private void skipComment() throws Exception{
-	 
-	 tm.getCharacter();
-	 tm.getCharacter();
-	 characterPosition +=2;
-	 
-	 while(!tm.isAtEnd()) {
-		  
-		 char c = tm.getCharacter();
-		 characterPosition++;
-		 
-		 if(c == '\n') {
-			 linePosition++;
-			 characterPosition = 0;
-		 }
-		 if(c == '*' && tm.peekCharacter() == '/') {
-			 tm.getCharacter();
-			 characterPosition++;
-			 return;
-		 }
-	 }
-	 throw new Exception("Incomplete comment");
-}
- 
+        int startLine = linePosition;
+        int startCharacter = characterPosition;
+
+        StringBuilder buffer = new StringBuilder();
+
+        while(!tm.isAtEnd() && Character.isLetterOrDigit(tm.peekCharacter())) {
+            buffer.append(tm.getCharacter());
+            characterPosition++;
+        }
+        String word = buffer.toString();
+
+        if(keywords.containsKey(word)) {
+            return new Token(keywords.get(word), startLine,characterPosition);
+        }
+        return new Token(TokenTypes.IDENTIFIER, startLine, startCharacter,word);
+    }
+
+    private Token readStrings() throws Exception {
+
+        int startLine = linePosition;
+        int startCharacter = characterPosition;
+
+        tm.getCharacter();
+        characterPosition++;
+
+        StringBuilder buffer = new StringBuilder();
+
+        while(!tm.isAtEnd() && tm.peekCharacter()!= '"') {
+
+            char c = tm.getCharacter();
+
+            if(c =='\n') {
+                linePosition++;
+                characterPosition = 0;
+            }else {
+                characterPosition++;
+            }
+            buffer.append(c);
+        }
+
+
+        if(tm.isAtEnd()) {
+            throw new Exception("Incomplete String");
+        }
+        tm.getCharacter();
+        characterPosition++;
+        return new Token(TokenTypes.STRINGLITERAL, startLine, startCharacter,buffer.toString());
+    }
+
+    private Token readNumbers(){
+
+        int startLine = linePosition;
+        int startCharacter = characterPosition;
+
+        StringBuilder buffer = new StringBuilder();
+
+        while(!tm.isAtEnd() && Character.isDigit(tm.peekCharacter())) {
+            buffer.append(tm.getCharacter());
+            characterPosition++;
+        }
+        return new Token(TokenTypes.NUMBER, startLine, startCharacter, buffer.toString());
+    }
+
+    private void skipComment() throws Exception{
+
+        tm.getCharacter();
+        tm.getCharacter();
+        characterPosition +=2;
+
+        while(!tm.isAtEnd()) {
+
+            char c = tm.getCharacter();
+            characterPosition++;
+
+            if(c == '\n') {
+                linePosition++;
+                characterPosition = 0;
+            }else {
+                characterPosition++;
+            }
+            if(c == '*' &&!tm.isAtEnd() && tm.peekCharacter() == '/') {
+                tm.getCharacter();
+                characterPosition++;
+                return;
+            }
+        }
+        throw new Exception("Incomplete comment");
+    }
+
     public List<Token> lex() throws Exception{
-	   
-    	tokens = new ArrayList<>();
-    	
-	   while(!tm.isAtEnd()) {
-		   
-		   if(atStartofLine) {
-			   int spaceCount =0;
-			   
-			   while(!tm.isAtEnd() && tm.peekCharacter() == ' '||tm.peekCharacter() == '\t') {
-				   if(tm.peekCharacter() == '\t') {
-					   spaceCount +=4;
-				   }else {
-					   spaceCount++;
-				   }
-				   tm.getCharacter();
-			   }
-			   if(spaceCount % 4 !=0){ 
-				   throw new SyntaxErrorException("Incorrect indentation", linePosition, characterPosition);
-			   }
-			  int indentLevel = spaceCount / 4;
-			  int currentIndent = indentStack.peek();
-			  
-			  if(indentLevel > currentIndent) {
-				  indentStack.push(indentLevel);
-				  tokens.add(new Token(TokenTypes.INDENT,linePosition,0));
-			  } else {
-				  while(indentStack.peek() > indentLevel) {
-					  indentStack.pop();
-					  tokens.add(new Token(TokenTypes.DEDENT, linePosition,0));
-				  }
-			  }
-			  atStartofLine = false;
-		   }
-		   
-		   if(tm.isAtEnd()) {
-			   break;
-		   }
-		   
-		   char c = tm.peekCharacter();
-		   
-		   if(c==' ') {
-			   tm.getCharacter();
-			   characterPosition++;
-		   } 
-		   else if(c=='\n') {
-			   tm.getCharacter();
-			   tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
-			   linePosition++;
-			   characterPosition = 0;
-			   atStartofLine = true;
-		   }else if(c == '/' && tm.peekCharacter(1) == '*') {
-			   skipComment();
-		   }else if(c == '"') {
-			   tokens.add(readStrings());
-		   }
-		   else if(Character.isDigit(c)) {
-			   tokens.add(readNumbers());
-		   }else if(Character.isLetter(c)) {
-			   tokens.add(readWord());
-		   }else if (c == ','){
-			   int startLine = linePosition;
-			   int startCharacter = characterPosition;
-			   
-			  tm.getCharacter();
-			  characterPosition++;
-			  tokens.add(new Token(TokenTypes.COMMA, linePosition, characterPosition));
-		   }else if (c == '='){
-				  int startLine = linePosition;
-				  int startCharacter = characterPosition;
-				  
-				  tm.getCharacter();
-				  characterPosition++;
-				  
-				  if(tm.peekCharacter() == '=') {
-					  tm.getCharacter();
-					  characterPosition++;
-					  tokens.add(new Token(TokenTypes.DOUBLEEQUAL, startLine, startCharacter));
-				  }
-			   }else if (c == '>'){
-					  int startLine = linePosition;
-					  int startCharacter = characterPosition;
-					  
-					  tm.getCharacter();
-					  characterPosition++;
-					  
-					  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
-						  tm.getCharacter();
-						  characterPosition++;
-						  tokens.add(new Token(TokenTypes.GREATERTHANEQUAL, startLine, startCharacter));
-					  }else {
-						  tokens.add(new Token(TokenTypes.GREATERTHAN, startLine, startCharacter));
-					  }
-				   }else if (c == '<'){
-						  int startLine = linePosition;
-						  int startCharacter = characterPosition;
-						  
-						  tm.getCharacter();
-						  characterPosition++;
-						  
-						  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
-							  tm.getCharacter();
-							  characterPosition++;
-							  tokens.add(new Token(TokenTypes.LESSTHANEQUAL, startLine, startCharacter));
-						  }else {
-							  tokens.add(new Token(TokenTypes.LESSTHAN, startLine, startCharacter));
-						  }
-					   } else if (c == '!'){
-							  int startLine = linePosition;
-							  int startCharacter = characterPosition;
-							  
-							  tm.getCharacter();
-							  characterPosition++;
-							  
-							  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
-								  tm.getCharacter();
-								  characterPosition++;
-								  tokens.add(new Token(TokenTypes.NOTEQUAL, startLine, startCharacter));
-							  }else {
-								  tokens.add(new Token(TokenTypes.NOT, startLine, startCharacter));
-							  }
-						   } else if(c == '-') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.HYPHEN, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == '+') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.PLUS, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == '*') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.ASTERISK, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == '/') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.SLASH, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == '(') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.OPENPAREN, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == ')') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.CLOSEPAREN, linePosition, characterPosition));
-				   characterPosition++;
-			   }else if(c == '%') {
-				   tm.getCharacter();
-				   tokens.add(new Token(TokenTypes.PERCENT, linePosition, characterPosition));
-				   characterPosition++;
-			   } else {  tm.getCharacter();
-			   characterPosition++;
-		   }
-	}
-	   
-	   while(indentStack.size() > 1) {
-		   indentStack.pop();
-		   tokens.add(new Token(TokenTypes.DEDENT, linePosition, characterPosition));
-	   }
-	   
-	   tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
-	return tokens;
-   }
+
+        tokens = new ArrayList<>();
+
+        while(!tm.isAtEnd()) {
+
+            if(atStartofLine) {
+                boolean newLine = false;
+                if(tm.peekCharacter()  == '\n') {
+                    newLine = true;
+                }
+                if(!newLine) {
+                    int spaceCount = 0;
+
+                    while (!tm.isAtEnd() &&
+                            (tm.peekCharacter() == ' ' || tm.peekCharacter() == '\t')) {
+                        if (tm.peekCharacter() == '\t') {
+                            spaceCount += 4;
+                        } else {
+                            spaceCount++;
+                        }
+                        tm.getCharacter();
+                    }
+                    if (spaceCount % 4 != 0) {
+                        throw new SyntaxErrorException("Incorrect indentation", linePosition, spaceCount);
+                    }
+                    int indentLevel = spaceCount / 4;
+                    int currentIndent = indentStack.peek();
+
+                    if (indentLevel > currentIndent) {
+                        indentStack.push(indentLevel);
+                        tokens.add(new Token(TokenTypes.INDENT, linePosition, 0));
+                    } else {
+                        while (indentStack.peek() > indentLevel) {
+                            indentStack.pop();
+                            tokens.add(new Token(TokenTypes.DEDENT, linePosition, 0));
+                        }
+                    }
+                    characterPosition += spaceCount;
+                    atStartofLine = false;
+                }
+            }
+
+            if(tm.isAtEnd()) {
+                break;
+            }
+
+            char c = tm.peekCharacter();
+
+            if(c==' ') {
+                tm.getCharacter();
+                characterPosition++;
+            }
+            else if(c=='\n') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+
+                tokens.add(new Token(TokenTypes.NEWLINE, startLine, startCharacter));
+                linePosition++;
+                characterPosition = 0;
+                atStartofLine = true;
+            }else if(c == '/' && tm.peekCharacter(1) == '*') {
+                skipComment();
+            }else if(c == '"') {
+                tokens.add(readStrings());
+            }
+            else if(Character.isDigit(c)) {
+                tokens.add(readNumbers());
+            }else if(Character.isLetter(c)) {
+                tokens.add(readWord());
+            }else if (c == ','){
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.COMMA, startLine, startCharacter));
+            }else if (c == '='){
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+
+                if(tm.peekCharacter() == '=') {
+                    tm.getCharacter();
+                    characterPosition++;
+                    tokens.add(new Token(TokenTypes.DOUBLEEQUAL, startLine, startCharacter));
+                }
+            }else if (c == '>'){
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+
+                if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+                    tm.getCharacter();
+                    characterPosition++;
+                    tokens.add(new Token(TokenTypes.GREATERTHANEQUAL, startLine, startCharacter));
+                }else {
+                    tokens.add(new Token(TokenTypes.GREATERTHAN, startLine, startCharacter));
+                }
+            }else if (c == '<'){
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+
+                if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+                    tm.getCharacter();
+                    characterPosition++;
+                    tokens.add(new Token(TokenTypes.LESSTHANEQUAL, startLine, startCharacter));
+                }else {
+                    tokens.add(new Token(TokenTypes.LESSTHAN, startLine, startCharacter));
+                }
+            } else if (c == '!'){
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+
+                if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+                    tm.getCharacter();
+                    characterPosition++;
+                    tokens.add(new Token(TokenTypes.NOTEQUAL, startLine, startCharacter));
+                }else {
+                    tokens.add(new Token(TokenTypes.NOT, startLine, startCharacter));
+                }
+            } else if(c == '-') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.HYPHEN, startLine, startCharacter));
+            }else if(c == '+') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.PLUS, startLine, startCharacter));
+
+            }else if(c == '*') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.ASTERISK, startLine, startCharacter));
+
+            }else if(c == '/') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.SLASH, startLine, startCharacter));
+
+            }else if(c == '(') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.OPENPAREN, startLine, startCharacter));
+
+            }else if(c == ')') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.CLOSEPAREN, startLine, startCharacter));
+
+            }else if(c == '%') {
+                int startLine = linePosition;
+                int startCharacter = characterPosition;
+
+                tm.getCharacter();
+                characterPosition++;
+                tokens.add(new Token(TokenTypes.PERCENT, startLine, startCharacter));
+            } else {
+                tm.getCharacter();
+                characterPosition++;
+            }
+        }
+
+        while(indentStack.size() > 1) {
+            indentStack.pop();
+            tokens.add(new Token(TokenTypes.DEDENT, linePosition, characterPosition));
+        }
+
+        tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
+
+        return tokens;
+    }
 }
