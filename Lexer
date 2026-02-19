@@ -131,221 +131,166 @@ private Token readWord(){
 	 throw new Exception("Incomplete comment");
 }
  
- public List<Token> lex() throws Exception {
-
-	    tokens = new ArrayList<>();
-
-	    while(!tm.isAtEnd()) {
-
-	        // ===== INDENT =====
-	        if(atStartofLine) {
-
-	            int spaceCount = 0;
-
-	            while(tm.peekCharacter() == ' ') {
-	                tm.getCharacter();
-	                spaceCount++;
-	            }
-
-	            if(spaceCount % 4 != 0)
-	                throw new SyntaxErrorException("Incorrect indentation", linePosition, characterPosition);
-
-	            int indentLevel = spaceCount / 4;
-	            int currentIndent = indentStack.peek();
-
-	            if(indentLevel > currentIndent) {
-	                indentStack.push(indentLevel);
-	                tokens.add(new Token(TokenTypes.INDENT, linePosition, 0));
-	            }
-	            else {
-	                while(indentStack.peek() > indentLevel) {
-	                    indentStack.pop();
-	                    tokens.add(new Token(TokenTypes.DEDENT, linePosition, 0));
-	                }
-	            }
-
-	            characterPosition = spaceCount;
-	            atStartofLine = false;
-	        }
-
-	        char c = tm.peekCharacter();
-
-	        if(c == ' ') {
-	            tm.getCharacter();
-	            characterPosition++;
-	        }
-
-	        else if(c == '\n') {
-	            tm.getCharacter();
-	            tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
-	            linePosition++;
-	            characterPosition = 0;
-	            atStartofLine = true;
-	        }
-
-	        else if(c == '/' && tm.peekCharacter(1) == '*') {
-	            skipComment();
-	        }
-
-	        else if(c == '"') {
-	            tokens.add(readStrings());
-	        }
-
-	        else if(Character.isDigit(c)) {
-	            tokens.add(readNumbers());
-	        }
-
-	        else if(Character.isLetter(c)) {
-	            tokens.add(readWord());
-	        }
-
-	        else if(c == ',') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-
-	            tokens.add(new Token(TokenTypes.COMMA, startLine, startColumn));
-	        }
-
-	        else if(c == '=' ) {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-
-	            if(tm.peekCharacter() == '=') {
-	                tm.getCharacter();
-	                characterPosition++;
-	                tokens.add(new Token(TokenTypes.DOUBLEEQUAL, startLine, startColumn));
-	            }
-	        }
-
-	        else if(c == '>') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-
-	            if(tm.peekCharacter() == '=') {
-	                tm.getCharacter();
-	                characterPosition++;
-	                tokens.add(new Token(TokenTypes.GREATERTHANEQUAL, startLine, startColumn));
-	            }
-	            else {
-	                tokens.add(new Token(TokenTypes.GREATERTHAN, startLine, startColumn));
-	            }
-	        }
-
-	        else if(c == '<') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-
-	            if(tm.peekCharacter() == '=') {
-	                tm.getCharacter();
-	                characterPosition++;
-	                tokens.add(new Token(TokenTypes.LESSTHANEQUAL, startLine, startColumn));
-	            }
-	            else {
-	                tokens.add(new Token(TokenTypes.LESSTHAN, startLine, startColumn));
-	            }
-	        }
-
-	        else if(c == '!') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-
-	            if(tm.peekCharacter() == '=') {
-	                tm.getCharacter();
-	                characterPosition++;
-	                tokens.add(new Token(TokenTypes.NOTEQUAL, startLine, startColumn));
-	            }
-	        }
-
-	        else if(c == '+') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.PLUS, startLine, startColumn));
-	        }
-
-	        else if(c == '-') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.HYPHEN, startLine, startColumn));
-	        }
-
-	        else if(c == '*') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.ASTERISK, startLine, startColumn));
-	        }
-
-	        else if(c == '/') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.SLASH, startLine, startColumn));
-	        }
-
-	        else if(c == '%') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.PERCENT, startLine, startColumn));
-	        }
-
-	        else if(c == '(') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.OPENPAREN, startLine, startColumn));
-	        }
-
-	        else if(c == ')') {
-	            int startLine = linePosition;
-	            int startColumn = characterPosition;
-
-	            tm.getCharacter();
-	            characterPosition++;
-	            tokens.add(new Token(TokenTypes.CLOSEPAREN, startLine, startColumn));
-	        }
-
-	        else {
-	            tm.getCharacter();
-	            characterPosition++;
-	        }
-	    }
-
-	    while(indentStack.size() > 1) {
-	        indentStack.pop();
-	        tokens.add(new Token(TokenTypes.DEDENT, linePosition, characterPosition));
-	    }
-
-	    return tokens;
+    public List<Token> lex() throws Exception{
+	   
+    	tokens = new ArrayList<>();
+    	
+	   while(!tm.isAtEnd()) {
+		   
+		   if(atStartofLine) {
+			   int spaceCount =0;
+			   
+			   while(!tm.isAtEnd() && tm.peekCharacter() == ' '||tm.peekCharacter() == '\t') {
+				   if(tm.peekCharacter() == '\t') {
+					   spaceCount +=4;
+				   }else {
+					   spaceCount++;
+				   }
+				   tm.getCharacter();
+			   }
+			   if(spaceCount % 4 !=0){ 
+				   throw new SyntaxErrorException("Incorrect indentation", linePosition, characterPosition);
+			   }
+			  int indentLevel = spaceCount / 4;
+			  int currentIndent = indentStack.peek();
+			  
+			  if(indentLevel > currentIndent) {
+				  indentStack.push(indentLevel);
+				  tokens.add(new Token(TokenTypes.INDENT,linePosition,0));
+			  } else {
+				  while(indentStack.peek() > indentLevel) {
+					  indentStack.pop();
+					  tokens.add(new Token(TokenTypes.DEDENT, linePosition,0));
+				  }
+			  }
+			  atStartofLine = false;
+		   }
+		   
+		   if(tm.isAtEnd()) {
+			   break;
+		   }
+		   
+		   char c = tm.peekCharacter();
+		   
+		   if(c==' ') {
+			   tm.getCharacter();
+			   characterPosition++;
+		   } 
+		   else if(c=='\n') {
+			   tm.getCharacter();
+			   tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
+			   linePosition++;
+			   characterPosition = 0;
+			   atStartofLine = true;
+		   }else if(c == '/' && tm.peekCharacter(1) == '*') {
+			   skipComment();
+		   }else if(c == '"') {
+			   tokens.add(readStrings());
+		   }
+		   else if(Character.isDigit(c)) {
+			   tokens.add(readNumbers());
+		   }else if(Character.isLetter(c)) {
+			   tokens.add(readWord());
+		   }else if (c == ','){
+			   int startLine = linePosition;
+			   int startCharacter = characterPosition;
+			   
+			  tm.getCharacter();
+			  characterPosition++;
+			  tokens.add(new Token(TokenTypes.COMMA, linePosition, characterPosition));
+		   }else if (c == '='){
+				  int startLine = linePosition;
+				  int startCharacter = characterPosition;
+				  
+				  tm.getCharacter();
+				  characterPosition++;
+				  
+				  if(tm.peekCharacter() == '=') {
+					  tm.getCharacter();
+					  characterPosition++;
+					  tokens.add(new Token(TokenTypes.DOUBLEEQUAL, startLine, startCharacter));
+				  }
+			   }else if (c == '>'){
+					  int startLine = linePosition;
+					  int startCharacter = characterPosition;
+					  
+					  tm.getCharacter();
+					  characterPosition++;
+					  
+					  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+						  tm.getCharacter();
+						  characterPosition++;
+						  tokens.add(new Token(TokenTypes.GREATERTHANEQUAL, startLine, startCharacter));
+					  }else {
+						  tokens.add(new Token(TokenTypes.GREATERTHAN, startLine, startCharacter));
+					  }
+				   }else if (c == '<'){
+						  int startLine = linePosition;
+						  int startCharacter = characterPosition;
+						  
+						  tm.getCharacter();
+						  characterPosition++;
+						  
+						  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+							  tm.getCharacter();
+							  characterPosition++;
+							  tokens.add(new Token(TokenTypes.LESSTHANEQUAL, startLine, startCharacter));
+						  }else {
+							  tokens.add(new Token(TokenTypes.LESSTHAN, startLine, startCharacter));
+						  }
+					   } else if (c == '!'){
+							  int startLine = linePosition;
+							  int startCharacter = characterPosition;
+							  
+							  tm.getCharacter();
+							  characterPosition++;
+							  
+							  if(!tm.isAtEnd() && tm.peekCharacter() == '=') {
+								  tm.getCharacter();
+								  characterPosition++;
+								  tokens.add(new Token(TokenTypes.NOTEQUAL, startLine, startCharacter));
+							  }else {
+								  tokens.add(new Token(TokenTypes.NOT, startLine, startCharacter));
+							  }
+						   } else if(c == '-') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.HYPHEN, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == '+') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.PLUS, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == '*') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.ASTERISK, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == '/') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.SLASH, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == '(') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.OPENPAREN, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == ')') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.CLOSEPAREN, linePosition, characterPosition));
+				   characterPosition++;
+			   }else if(c == '%') {
+				   tm.getCharacter();
+				   tokens.add(new Token(TokenTypes.PERCENT, linePosition, characterPosition));
+				   characterPosition++;
+			   } else {  tm.getCharacter();
+			   characterPosition++;
+		   }
 	}
-
+	   
+	   while(indentStack.size() > 1) {
+		   indentStack.pop();
+		   tokens.add(new Token(TokenTypes.DEDENT, linePosition, characterPosition));
+	   }
+	   
+	   tokens.add(new Token(TokenTypes.NEWLINE, linePosition, characterPosition));
+	return tokens;
+   }
 }
