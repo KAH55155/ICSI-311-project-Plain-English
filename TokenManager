@@ -1,0 +1,55 @@
+package PlainEnglish;
+import java.util.LinkedList;
+import java.util.Optional;
+
+public class TokenManager
+{
+    private final LinkedList<Token> tokens;
+
+    public TokenManager(LinkedList<Token> tokens)
+    {
+        this.tokens = tokens;
+    }
+    public Optional<Token> matchAndRemove(Token.TokenTypes type){
+
+    if(tokens.isEmpty()){
+        return Optional.empty();
+    }
+Token next = tokens.peek();
+
+    if(next.Type == type){
+        return Optional.of(tokens.remove());
+    }
+    return Optional.empty();
+    }
+
+    public Optional<Token> peek(int index){
+
+        if(index<0 || index>=tokens.size()){
+            return Optional.empty();
+        }
+        return Optional.of(tokens.get(index));
+    }
+
+    public boolean nextTwoTokensMatch(Token.TokenTypes first, Token.TokenTypes second){
+        if(tokens.size() < 2){
+            return false;
+        }
+        return tokens.get(0).Type == first && tokens.get(1).Type == second;
+    }
+    public int getCurrentLine(){
+        if(tokens.isEmpty()){
+            return -1;
+        }
+        return tokens.peek().LineNumber;
+    }
+    public int getCurrentColumnNumber(){
+        if(tokens.isEmpty()){
+            return -1;
+        }
+    return tokens.peek().ColumnNumber;
+    }
+    public boolean hasMoreTokens(){
+        return !tokens.isEmpty();
+    }
+}
