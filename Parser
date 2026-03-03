@@ -1,0 +1,164 @@
+package PlainEnglish;
+
+import PlainEnglish.AST.*;
+
+import java.util.LinkedList;
+import java.util.Optional;
+
+public class PlainEnglishParser {
+
+    private final LinkedList<Token> tokens;
+
+    public PlainEnglishParser(LinkedList<Token> tokensIn) {
+        this.tokens = tokensIn;
+    }
+
+    // ============================================================
+    // Entry point
+    // ============================================================
+
+    public Optional<Program> program() throws SyntaxErrorException {
+
+        Program program = new Program();
+
+        while (!tokens.isEmpty()) {
+
+            skipNewLines();
+
+            if (tokens.isEmpty())
+                break;
+
+            Optional<TypeDef> td = parseTypeDef();
+
+            if (td.isEmpty()) {
+                throw new SyntaxErrorException(
+                        "Unexpected token",
+                        peekLine(),
+                        peekColumn());
+            }
+
+            program.typedef.add(td.get());
+        }
+
+        return Optional.of(program);
+    }
+
+    // ============================================================
+    // TypeDef
+    // ============================================================
+
+    private Optional<TypeDef> parseTypeDef() throws SyntaxErrorException {
+
+        if (!match(Token.TokenTypes.A) &&
+                !match(Token.TokenTypes.AN)) {
+            return Optional.empty();
+        }
+
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+        require(Token.TokenTypes.IS);
+        require(Token.TokenTypes.NEWLINE);
+
+        skipNewLines();
+
+        require(Token.TokenTypes.INDENT);
+
+        TypeDef td = new TypeDef();
+        td.name = nameToken.Value.orElseThrow();
+
+        skipNewLines();
+
+        while (!check(Token.TokenTypes.DEDENT)) {
+
+            Field field = parseField();
+            td.field.add(field);
+
+            skipNewLines();
+        }
+
+        require(Token.TokenTypes.DEDENT);
+
+        skipNewLines();
+
+        return Optional.of(td);
+    }
+
+    // ============================================================
+    // Field
+    // ============================================================
+
+    private Field parseField() throws SyntaxErrorException {
+
+        Token typeToken = require(Token.TokenTypes.IDENTIFIER);
+
+        if (check(Token.TokenTypes.NEWLINE)) {
+            // This triggers the failure case in TestPE_CodeParser
+            throw new SyntaxErrorException(
+                    "Field missing name",
+                    typeToken.LineNumber,
+                    typeToken.ColumnNumber);
+        }
+
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+
+        Field field = new Field();
+        field.type = typeToken.Value.orElseThrow();
+        field.name = nameToken.Value.orElseThrow();
+
+        skipNewLines();
+
+        return field;
+    }
+
+    // ============================================================
+    // Helper Methods
+    // ============================================================
+
+    private void skipNewLines() {
+        while (!tokens.isEmpty() &&
+                tokens.getFirst().Type == Token.TokenTypes.NEWLINE) {
+            tokens.removeFirst();
+        }
+    }
+
+    private boolean match(Token.TokenTypes type) {
+        if (!tokens.isEmpty() &&
+                tokens.getFirst().Type == type) {
+            tokens.removeFirst();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean check(Token.TokenTypes type) {
+        return !tokens.isEmpty() &&
+                tokens.getFirst().Type == type;
+    }
+
+    private Token require(Token.TokenTypes type) throws SyntaxErrorException {
+        if (tokens.isEmpty())
+            throw new SyntaxErrorException(
+                    "Unexpected end of input",
+                    0, 0);
+
+        Token t = tokens.removeFirst();
+
+        if (t.Type != type) {
+            throw new SyntaxErrorException(
+                    "Expected " + type,
+                    t.LineNumber,
+                    t.ColumnNumber);
+        }
+
+        return t;
+    }
+
+    private int peekLine() {
+        if (tokens.isEmpty()) return 0;
+        return tokens.getFirst().LineNumber;
+    }
+
+    private int peekColumn() {
+        if (tokens.isEmpty()) return 0;
+        return tokens.getFirst().ColumnNumber;
+    }
+}
