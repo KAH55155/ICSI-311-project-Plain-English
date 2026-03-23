@@ -1,0 +1,129 @@
+public Optional<Expression> expression() throws SyntaxErrorException {
+
+    Optional<Term> firstTerm = term();
+    if(firstTerm.isEmpty()){
+        return Optional.empty();
+    }
+
+    Expression expr = new Expression();
+    expr.term.add(firstTerm.get());
+
+    while(check(Token.TokenTypes.PLUS) || check(Token.TokenTypes.MINUS)){
+
+        Token op = tokens.removeFirst();
+
+        if(op.Type == Token.TokenTypes.PLUS){
+            expr.theplusORhyphen.add(plusORhyphen.plus);
+        } else {
+            expr.theplusORhyphen.add(plusORhyphen.hyphen);
+        }
+
+        Optional<Term> nextTerm = term();
+        if(nextTerm.isEmpty()){
+            throw new SyntaxErrorException("Term expected after + or -", peekLine(), peekColumn());
+        }
+
+        expr.term.add(nextTerm.get());
+    }
+
+    return Optional.of(expr);
+}
+
+public Optional<Term> term() throws SyntaxErrorException {
+
+    Optional<Factor> firstFactor = factor();
+    if(firstFactor.isEmpty()){
+        return Optional.empty();
+    }
+
+    Term term = new Term();
+    term.factor.add(firstFactor.get());
+
+    while(check(Token.TokenTypes.TIMES) || 
+          check(Token.TokenTypes.DIVIDE) || 
+          check(Token.TokenTypes.PERCENT)){
+
+        Token op = tokens.removeFirst();
+
+        if(op.Type == Token.TokenTypes.TIMES){
+            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.asterisk);
+        } 
+        else if(op.Type == Token.TokenTypes.DIVIDE){
+            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.slash);
+        } 
+        else {
+            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.percent);
+        }
+
+        Optional<Factor> nextFactor = factor();
+        if(nextFactor.isEmpty()){
+            throw new SyntaxErrorException("Factor expected after operator", peekLine(), peekColumn());
+        }
+
+        term.factor.add(nextFactor.get());
+    }
+
+    return Optional.of(term);
+}
+
+public Optional<Factor> factor() throws SyntaxErrorException {
+
+    Factor factor = new Factor();
+
+    // NUMBER
+    if(check(Token.TokenTypes.NUMBER)){
+        Token num = require(Token.TokenTypes.NUMBER);
+        factor.number = Optional.of(num.Value.orElseThrow());
+        return Optional.of(factor);
+    }
+
+    // STRING
+    if(check(Token.TokenTypes.STRING)){
+        Token str = require(Token.TokenTypes.STRING);
+        factor.stringliteral = Optional.of(str.Value.orElseThrow());
+        return Optional.of(factor);
+    }
+
+    // CHARACTER
+    if(check(Token.TokenTypes.CHARACTER)){
+        Token ch = require(Token.TokenTypes.CHARACTER);
+        factor.characterliteral = Optional.of(ch.Value.orElseThrow());
+        return Optional.of(factor);
+    }
+
+    // TRUE
+    if(match(Token.TokenTypes.TRUE)){
+        factor.$true = true;
+        return Optional.of(factor);
+    }
+
+    // FALSE
+    if(match(Token.TokenTypes.FALSE)){
+        factor.$false = true;
+        return Optional.of(factor);
+    }
+
+    // VARIABLE
+    Optional<VariableReference> varRef = variableReference();
+    if(varRef.isPresent()){
+        factor.variablereference = Optional.of(varRef.get());
+        return Optional.of(factor);
+    }
+
+    // ( EXPRESSION )
+    if(match(Token.TokenTypes.LPAREN)){
+        Optional<Expression> expr = expression();
+
+        if(expr.isEmpty()){
+            throw new SyntaxErrorException("Expression expected inside parentheses", peekLine(), peekColumn());
+        }
+
+        require(Token.TokenTypes.RPAREN);
+
+        factor.expression = Optional.of(expr.get());
+        return Optional.of(factor);
+    }
+
+    return Optional.empty();
+}
+
