@@ -8,7 +8,7 @@ public Optional<Expression> expression() throws SyntaxErrorException {
     Expression expr = new Expression();
     expr.term.add(firstTerm.get());
 
-    while(check(Token.TokenTypes.PLUS) || check(Token.TokenTypes.MINUS)){
+    while(check(Token.TokenTypes.PLUS) || check(Token.TokenTypes.HYPHEN)){
 
         Token op = tokens.removeFirst();
 
@@ -39,16 +39,16 @@ public Optional<Term> term() throws SyntaxErrorException {
     Term term = new Term();
     term.factor.add(firstFactor.get());
 
-    while(check(Token.TokenTypes.TIMES) || 
-          check(Token.TokenTypes.DIVIDE) || 
+    while(check(Token.TokenTypes.ASTERISK) || 
+          check(Token.TokenTypes.SLASH) || 
           check(Token.TokenTypes.PERCENT)){
 
         Token op = tokens.removeFirst();
 
-        if(op.Type == Token.TokenTypes.TIMES){
+        if(op.Type == Token.TokenTypes.ASTERISK){
             term.theasteriskORslashORpercent.add(asteriskORslashORpercent.asterisk);
         } 
-        else if(op.Type == Token.TokenTypes.DIVIDE){
+        else if(op.Type == Token.TokenTypes.SLASH){
             term.theasteriskORslashORpercent.add(asteriskORslashORpercent.slash);
         } 
         else {
@@ -78,15 +78,15 @@ public Optional<Factor> factor() throws SyntaxErrorException {
     }
 
     // STRING
-    if(check(Token.TokenTypes.STRING)){
-        Token str = require(Token.TokenTypes.STRING);
+    if(check(Token.TokenTypes.STRINGLITERAL)){
+        Token str = require(Token.TokenTypes.STRINGLITERAL);
         factor.stringliteral = Optional.of(str.Value.orElseThrow());
         return Optional.of(factor);
     }
 
     // CHARACTER
-    if(check(Token.TokenTypes.CHARACTER)){
-        Token ch = require(Token.TokenTypes.CHARACTER);
+    if(check(Token.TokenTypes.CHARACTERLITERAL)){
+        Token ch = require(Token.TokenTypes.CHARACTERLITERAL);
         factor.characterliteral = Optional.of(ch.Value.orElseThrow());
         return Optional.of(factor);
     }
@@ -111,14 +111,14 @@ public Optional<Factor> factor() throws SyntaxErrorException {
     }
 
     // ( EXPRESSION )
-    if(match(Token.TokenTypes.LPAREN)){
+    if(match(Token.TokenTypes.OPENPAREN)){
         Optional<Expression> expr = expression();
 
         if(expr.isEmpty()){
             throw new SyntaxErrorException("Expression expected inside parentheses", peekLine(), peekColumn());
         }
 
-        require(Token.TokenTypes.RPAREN);
+        require(Token.TokenTypes.CLOSEPAREN);
 
         factor.expression = Optional.of(expr.get());
         return Optional.of(factor);
@@ -126,4 +126,3 @@ public Optional<Factor> factor() throws SyntaxErrorException {
 
     return Optional.empty();
 }
-
