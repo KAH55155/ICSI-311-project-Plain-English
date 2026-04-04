@@ -1,128 +1,581 @@
-public Optional<Expression> expression() throws SyntaxErrorException {
+package PlainEnglish;
 
-    Optional<Term> firstTerm = term();
-    if(firstTerm.isEmpty()){
-        return Optional.empty();
+import PlainEnglish.AST.*;
+import java.util.LinkedList;
+import java.util.Optional;
+
+public class PlainEnglishParser{
+
+    private final LinkedList<Token> tokens;
+    public PlainEnglishParser(LinkedList<Token> tokensIn){
+        this.tokens = tokensIn;
     }
 
-    Expression expr = new Expression();
-    expr.term.add(firstTerm.get());
+    public Optional<FunctionCall> functionCall() throws SyntaxErrorException {
 
-    while(check(Token.TokenTypes.PLUS) || check(Token.TokenTypes.HYPHEN)){
+        if(!match(Token.TokenTypes.IDENTIFIER)){
+            return Optional.empty();
+        }
+
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+
+        FunctionCall call = new FunctionCall();
+        call.name = nameToken.Value.orElseThrow();
+        
+
+        if(match(Token.TokenTypes.WITH)){
+
+            Optional<Expression> expr = expression();
+
+            if(expr.isEmpty()){
+                throw new SyntaxErrorException("Expression expected", peekLine(), peekColumn());
+            }
+
+            call.parameter.add(expr.get());
+
+            while(match(Token.TokenTypes.COMMA)){
+                Optional<Expression> next = expression();
+
+                if(next.isEmpty()){
+                    throw new SyntaxErrorException("Expression expected", peekLine(), peekColumn());
+                }
+
+                call.parameter.add(next.get());
+            }
+        }
+
+        return Optional.of(call);
+    }
+
+    public Optional<Loop> loopStatement() throws SyntaxErrorException {
+
+        if(!match(Token.TokenTypes.LOOP)){
+            return Optional.empty();
+        }
+
+        Optional<BoolExpTerm> cond = boolExpTerm();
+
+        Optional<StatementBlock> block = statementBlock();
+
+        Loop loop = new Loop();
+        loop.boolexpterm = cond.orElseThrow();
+        loop.statementblock = block.orElseThrow();
+
+        return Optional.of(loop);
+    }
+
+    public Optional<If> ifStatement() throws SyntaxErrorException {
+
+        if(!match(Token.TokenTypes.IF)){
+            return Optional.empty();
+        }
+
+        Optional<BoolExpTerm> cond = boolExpTerm();
+
+        if(cond.isEmpty()){
+            throw new SyntaxErrorException("Boolean expression expected", peekLine(), peekColumn());
+        }
+
+        Optional<StatementBlock> trueBlock = statementBlock();
+
+        If ifStmt = new If();
+        ifStmt.boolexpterm = cond.get();
+        ifStmt.statementblock = trueBlock.orElseThrow();
+
+        // 🔥 HANDLE ELSE
+        if(match(Token.TokenTypes.ELSE)){
+
+            ifStmt.$else = true;
+
+            Optional<StatementBlock> falseBlock = statementBlock();
+
+            ifStmt.falseCase = Optional.of(falseBlock.orElseThrow());
+        }
+
+        return Optional.of(ifStmt);
+    }
+
+
+    public Optional<BoolExpTerm> boolExpTerm() throws SyntaxErrorException {
+
+        Optional<BoolExpFactor> first = boolExpFactor();
+
+        if(first.isEmpty()){
+            return Optional.empty();
+        }
+
+        BoolExpTerm term = new BoolExpTerm();
+        term.boolexpfactor = Optional.of(first.get());
+
+        // 🔥 HANDLE AND / OR CHAIN
+        if(check(Token.TokenTypes.AND) || check(Token.TokenTypes.OR)){
+
+            Token op = tokens.removeFirst();
+
+            if(op.Type == Token.TokenTypes.AND){
+                term.theandORor.add(andORor.and);
+            } else {
+                term.theandORor.add(andORor.or);
+            }
+
+            Optional<BoolExpTerm> next = boolExpTerm();
+
+            if(next.isEmpty()){
+                throw new SyntaxErrorException("Boolean term expected", peekLine(), peekColumn());
+            }
+
+            term.boolexpterm.add(next.get());
+        }
+
+        return Optional.of(term);
+    }
+
+    public Optional<BoolExpFactor> boolExpFactor() throws SyntaxErrorException {
+
+        BoolExpFactor factor = new BoolExpFactor();
+
+        Optional<Expression> left = expression();
+
+        if(left.isEmpty()){
+            return Optional.empty();
+        }
+
+        factor.lhs = Optional.of(left.get());
+
+        if(!(check(Token.TokenTypes.DOUBLEEQUAL) ||
+                check(Token.TokenTypes.NOTEQUAL) ||
+                check(Token.TokenTypes.LESSTHAN) ||
+                check(Token.TokenTypes.GREATERTHAN) ||
+                check(Token.TokenTypes.LESSTHANEQUAL) ||
+                check(Token.TokenTypes.GREATERTHANEQUAL))){
+
+            throw new SyntaxErrorException("Comparison operator expected", peekLine(), peekColumn());
+        }
 
         Token op = tokens.removeFirst();
 
-        if(op.Type == Token.TokenTypes.PLUS){
-            expr.theplusORhyphen.add(plusORhyphen.plus);
-        } else {
-            expr.theplusORhyphen.add(plusORhyphen.hyphen);
+        switch(op.Type){
+            case DOUBLEEQUAL -> factor.thecompareOps = Optional.of(compareOps.doubleequal);
+            case NOTEQUAL -> factor.thecompareOps = Optional.of(compareOps.notequal);
+            case LESSTHAN -> factor.thecompareOps = Optional.of(compareOps.lessthan);
+            case GREATERTHAN -> factor.thecompareOps = Optional.of(compareOps.greaterthan);
+            case LESSTHANEQUAL -> factor.thecompareOps = Optional.of(compareOps.lessthanequal);
+            case GREATERTHANEQUAL -> factor.thecompareOps = Optional.of(compareOps.greaterthanequal);
         }
 
-        Optional<Term> nextTerm = term();
-        if(nextTerm.isEmpty()){
-            throw new SyntaxErrorException("Term expected after + or -", peekLine(), peekColumn());
+        Optional<Expression> right = expression();
+
+        if(right.isEmpty()){
+            throw new SyntaxErrorException("Right expression expected", peekLine(), peekColumn());
         }
 
-        expr.term.add(nextTerm.get());
+        factor.rhs = Optional.of(right.get());
+
+        return Optional.of(factor);
     }
 
-    return Optional.of(expr);
-}
+    private Field parseField() throws SyntaxErrorException{
 
-public Optional<Term> term() throws SyntaxErrorException {
+        Token typeToken = require(Token.TokenTypes.IDENTIFIER);
 
-    Optional<Factor> firstFactor = factor();
-    if(firstFactor.isEmpty()){
+        if(check(Token.TokenTypes.NEWLINE)){
+            throw new SyntaxErrorException("Field is missing a name", typeToken.LineNumber, typeToken.ColumnNumber);
+        }
+
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+        Field field = new Field();
+        field.type = typeToken.Value.orElseThrow();
+        field.name = nameToken.Value.orElseThrow();
+
+        skipNewLines();
+        return field;
+    }
+
+    private Optional<TypeDef> parseTypeDef() throws SyntaxErrorException{
+        if(!match(Token.TokenTypes.A) && !match(Token.TokenTypes.AN)){
+            return Optional.empty();
+        }
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+        require(Token.TokenTypes.IS);
+        require(Token.TokenTypes.NEWLINE);
+        skipNewLines();
+        require(Token.TokenTypes.INDENT);
+
+        TypeDef typeDef = new TypeDef();
+        typeDef.name = nameToken.Value.orElseThrow();
+
+        skipNewLines();
+
+        while(!check(Token.TokenTypes.DEDENT)){
+            Field field = parseField();
+            typeDef.field.add(field);
+            skipNewLines();
+        }
+        require(Token.TokenTypes.DEDENT);
+        skipNewLines();
+        return Optional.of(typeDef);
+    }
+
+    public Optional<Program> program() throws SyntaxErrorException{
+
+        Program program = new Program();
+
+        while(!tokens.isEmpty()){
+            skipNewLines();
+
+            if(tokens.isEmpty()){
+                break;
+            }
+
+            Optional<TypeDef> typeDEF = parseTypeDef();
+            if(typeDEF.isPresent()){
+                program.typedef.add(typeDEF.get());
+                continue;
+            }
+
+            Optional<Method> methoD = method();
+            if(methoD.isPresent()){
+                program.method.add(methoD.get());
+                continue;
+            }
+            throw new SyntaxErrorException("Token is unexpected", peekLine(),peekColumn());
+        }
+        return Optional.of(program);
+    }
+
+    public Optional<Method> method() throws SyntaxErrorException{
+        if(!match(Token.TokenTypes.TO)){
+            return Optional.empty();
+        }
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+
+        Method method = new Method();
+        method.name = nameToken.Value.orElseThrow();
+
+        if(match(Token.TokenTypes.A)|| match(Token.TokenTypes.AN)){
+            Token classToken = require(Token.TokenTypes.IDENTIFIER);
+            method.className = Optional.of(classToken.Value.orElseThrow());
+        }
+
+        if(match(Token.TokenTypes.WITH)){
+
+            method.with = true;
+
+            Optional<Parameter> param = parameter();
+            if(param.isEmpty()){
+                throw new SyntaxErrorException("Parameter is expected", peekLine(),peekColumn());
+            }
+            method.parameter.add(param.get());
+
+            while(match(Token.TokenTypes.COMMA)){
+                Optional<Parameter> next = parameter();
+
+                if(next.isEmpty()){
+                    throw new SyntaxErrorException("Parameter is expected", peekLine(),peekColumn());
+                }
+                method.parameter.add(next.get());
+            }
+        }
+        Optional<StatementBlock> block = statementBlock();
+        if(block.isEmpty()){
+            throw new SyntaxErrorException("Method body is expected", peekLine(),peekColumn());
+        }
+        method.statementblock = block.get();
+
+        return Optional.of(method);
+    }
+
+    public Optional<Parameter> parameter() throws SyntaxErrorException{
+
+        if(!check(Token.TokenTypes.IDENTIFIER)){
+            return Optional.empty();
+        }
+        Token typeToken = require(Token.TokenTypes.IDENTIFIER);
+
+        Parameter paraMeter = new Parameter();
+        paraMeter.paramType = typeToken.Value.orElseThrow();
+
+        if(match(Token.TokenTypes.NAMED)){
+            paraMeter.named = true;
+
+            Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+            paraMeter.nameOverride = Optional.of(nameToken.Value.orElseThrow());
+        }
+        return Optional.of(paraMeter);
+    }
+
+    public Optional<StatementBlock> statementBlock() throws SyntaxErrorException{
+
+        require(Token.TokenTypes.NEWLINE);
+        require(Token.TokenTypes.INDENT);
+
+        StatementBlock block = new StatementBlock();
+        skipNewLines();
+
+        while(!check(Token.TokenTypes.DEDENT)){
+            Optional<Statement> stateMent = statement();
+
+            if(stateMent.isEmpty()){
+                throw new SyntaxErrorException("Statement is expected", peekLine(), peekColumn());
+            }
+            block.statement.add(stateMent.get());
+            require(Token.TokenTypes.NEWLINE);
+        }
+        require(Token.TokenTypes.DEDENT);
+
+        return Optional.of(block);
+    }
+
+    public Optional<Statement> statement() throws SyntaxErrorException{
+
+        Optional<Make> make = makeBlock();
+        if(make.isPresent()){
+            Statement s = new Statement();
+            s.make = Optional.of(make.get());
+            return Optional.of(s);
+        }
+
+        Optional<Set> set = setBlock();
+        if(set.isPresent()){
+            Statement s = new Statement();
+            s.set = Optional.of(set.get());
+            return Optional.of(s);
+        }
+
+        Optional<FunctionCall> func = functionCall();
+        if(func.isPresent()){
+            Statement s = new Statement();
+            s.functioncall = Optional.of(func.get());
+            return Optional.of(s);
+        }
+
+        Optional<If> ifStmt = ifStatement();
+        if(ifStmt.isPresent()){
+            Statement s = new Statement();
+            s.$if = Optional.of(ifStmt.get());
+            return Optional.of(s);
+        }
+
+        Optional<Loop> loop = loopStatement();
+        if(loop.isPresent()){
+            Statement s = new Statement();
+            s.loop = Optional.of(loop.get());
+            return Optional.of(s);
+        }
+
         return Optional.empty();
     }
 
-    Term term = new Term();
-    term.factor.add(firstFactor.get());
+    public Optional<Make> makeBlock() throws SyntaxErrorException{
 
-    while(check(Token.TokenTypes.ASTERISK) || 
-          check(Token.TokenTypes.SLASH) || 
-          check(Token.TokenTypes.PERCENT)){
-
-        Token op = tokens.removeFirst();
-
-        if(op.Type == Token.TokenTypes.ASTERISK){
-            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.asterisk);
-        } 
-        else if(op.Type == Token.TokenTypes.SLASH){
-            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.slash);
-        } 
-        else {
-            term.theasteriskORslashORpercent.add(asteriskORslashORpercent.percent);
+        if(!match(Token.TokenTypes.MAKE)){
+            return Optional.empty();
         }
 
-        Optional<Factor> nextFactor = factor();
-        if(nextFactor.isEmpty()){
-            throw new SyntaxErrorException("Factor expected after operator", peekLine(), peekColumn());
+        Token typeToken = require(Token.TokenTypes.IDENTIFIER);
+        require(Token.TokenTypes.NAMED);
+        Token nameToken = require(Token.TokenTypes.IDENTIFIER);
+
+        Make make = new Make();
+        make.type = typeToken.Value.orElseThrow();
+        make.name = nameToken.Value.orElseThrow();
+
+        return Optional.of(make);
+    }
+
+    public Optional<Set> setBlock() throws SyntaxErrorException{
+
+        if(!match(Token.TokenTypes.SET)){
+            return Optional.empty();
+        }
+        Optional<VariableReference> reFerence = variableReference();
+
+        if(reFerence.isEmpty()){
+            throw new SyntaxErrorException("Expression is expected",peekLine(),peekColumn());
+        }
+        require(Token.TokenTypes.TO);
+        Optional<Expression> exPression = expression();
+
+        if(exPression.isEmpty()){
+            throw new SyntaxErrorException("Expression is expected",peekLine(),peekColumn());
         }
 
-        term.factor.add(nextFactor.get());
+        Set set = new Set();
+        set.variablereference = reFerence.get();
+        set.expression = exPression.get();
+
+        return Optional.of(set);
     }
 
-    return Optional.of(term);
-}
+    public Optional<VariableReference> variableReference() throws SyntaxErrorException{
 
-public Optional<Factor> factor() throws SyntaxErrorException {
+        if(!check(Token.TokenTypes.IDENTIFIER)){
+            return Optional.empty();
+        }
+        Token varToken = require(Token.TokenTypes.IDENTIFIER);
 
-    Factor factor = new Factor();
+        VariableReference ref = new VariableReference();
+        ref.name = varToken.Value.orElseThrow();
+        ref.of = false;
+        ref.$object = Optional.empty();
 
-    // NUMBER
-    if(check(Token.TokenTypes.NUMBER)){
-        Token num = require(Token.TokenTypes.NUMBER);
-        factor.number = Optional.of(num.Value.orElseThrow());
-        return Optional.of(factor);
+        return Optional.of(ref);
     }
 
-    // STRING
-    if(check(Token.TokenTypes.STRINGLITERAL)){
-        Token str = require(Token.TokenTypes.STRINGLITERAL);
-        factor.stringliteral = Optional.of(str.Value.orElseThrow());
-        return Optional.of(factor);
-    }
+    public Optional<Expression> expression() throws SyntaxErrorException{
 
-    // CHARACTER
-    if(check(Token.TokenTypes.CHARACTERLITERAL)){
-        Token ch = require(Token.TokenTypes.CHARACTERLITERAL);
-        factor.characterliteral = Optional.of(ch.Value.orElseThrow());
-        return Optional.of(factor);
-    }
+        Optional<Term> firstTerm = term();
 
-    // TRUE
-    if(match(Token.TokenTypes.TRUE)){
-        factor.$true = true;
-        return Optional.of(factor);
-    }
-
-    // FALSE
-    if(match(Token.TokenTypes.FALSE)){
-        factor.$false = true;
-        return Optional.of(factor);
-    }
-
-    // VARIABLE
-    Optional<VariableReference> varRef = variableReference();
-    if(varRef.isPresent()){
-        factor.variablereference = Optional.of(varRef.get());
-        return Optional.of(factor);
-    }
-
-    // ( EXPRESSION )
-    if(match(Token.TokenTypes.OPENPAREN)){
-        Optional<Expression> expr = expression();
-
-        if(expr.isEmpty()){
-            throw new SyntaxErrorException("Expression expected inside parentheses", peekLine(), peekColumn());
+        if(firstTerm.isEmpty()){
+            return Optional.empty();
         }
 
-        require(Token.TokenTypes.CLOSEPAREN);
+        Expression expressioN = new Expression();
+        expressioN.term.add(firstTerm.get());
 
-        factor.expression = Optional.of(expr.get());
-        return Optional.of(factor);
+        while(check(Token.TokenTypes.PLUS)||check(Token.TokenTypes.HYPHEN)){
+
+            Token operator = tokens.removeFirst();
+
+            if(operator.Type == Token.TokenTypes.PLUS){
+                expressioN.theplusORhyphen.add(plusORhyphen.plus);
+            }else{
+                expressioN.theplusORhyphen.add(plusORhyphen.hyphen);
+            }
+
+            Optional<Term> nextTerm = term();
+
+            if(nextTerm.isEmpty()){
+                throw new SyntaxErrorException("Term expected after + or -", peekLine(),peekColumn());
+            }
+            expressioN.term.add(nextTerm.get());
+        }
+        return Optional.of(expressioN);
     }
 
-    return Optional.empty();
+    public Optional<Term> term() throws SyntaxErrorException{
+
+        Optional<Factor> firstFactor = factor();
+        if(firstFactor.isEmpty()){
+            return Optional.empty();
+        }
+        Term term = new Term();
+        term.factor.add(firstFactor.get());
+
+        while(check(Token.TokenTypes.ASTERISK)||check(Token.TokenTypes.SLASH)||check(Token.TokenTypes.PERCENT)){
+
+            Token operator = tokens.removeFirst();
+
+            if(operator.Type == Token.TokenTypes.ASTERISK){
+                term.theasteriskORslashORpercent.add(asteriskORslashORpercent.asterisk);
+            }else if(operator.Type == Token.TokenTypes.SLASH){
+                term.theasteriskORslashORpercent.add(asteriskORslashORpercent.slash);
+            }else{
+                term.theasteriskORslashORpercent.add(asteriskORslashORpercent.percent);
+            }
+
+            Optional<Factor> nextFactor = factor();
+            if(nextFactor.isEmpty()){
+                throw new SyntaxErrorException("Factor is expected after the operator",peekLine(),peekColumn());
+            }
+            term.factor.add(nextFactor.get());
+        }
+        return Optional.of(term);
+    }
+
+    public Optional<Factor> factor() throws SyntaxErrorException{
+
+        Factor factor = new Factor();
+
+        if(check(Token.TokenTypes.NUMBER)){
+            Token numbeR = require(Token.TokenTypes.NUMBER);
+            factor.number = Optional.of(numbeR.Value.orElseThrow());
+            return Optional.of(factor);
+        }
+
+        Optional<VariableReference> variRef = variableReference();
+        if(variRef.isPresent()){
+            factor.variablereference = Optional.of(variRef.get());
+            return Optional.of(factor);
+        }
+
+        if(match(Token.TokenTypes.TRUE)){
+            factor.$true = true;
+            return Optional.of(factor);
+        }
+        if(match(Token.TokenTypes.FALSE)){
+            factor.$false = true;
+            return Optional.of(factor);
+        }
+
+        if(check(Token.TokenTypes.STRINGLITERAL)){
+            Token strinG = require(Token.TokenTypes.STRINGLITERAL);
+            factor.stringliteral = Optional.of(strinG.Value.orElseThrow());
+            return Optional.of(factor);
+        }
+
+        if(check(Token.TokenTypes.CHARACTERLITERAL)){
+            Token charL = require(Token.TokenTypes.CHARACTERLITERAL);
+            factor.characterliteral = Optional.of(charL.Value.orElseThrow());
+            return Optional.of(factor);
+        }
+
+        if(match(Token.TokenTypes.OPENPAREN)){
+
+            Optional<Expression> expressioN = expression();
+
+            if(expressioN.isEmpty()){
+                throw new SyntaxErrorException("Expression is expected inside parenthesis",peekLine(),peekColumn());
+            }
+            require(Token.TokenTypes.CLOSEPAREN);
+            factor.expression = Optional.of(expressioN.get());
+            return Optional.of(factor);
+        }
+        return Optional.empty();
+    }
+
+    private Token require(Token.TokenTypes type) throws SyntaxErrorException{
+
+        if(tokens.isEmpty()){
+            throw new SyntaxErrorException("End of input is unexpected",0,0);
+        }
+        Token token = tokens.removeFirst();
+
+        if(token.Type != type){
+            throw new SyntaxErrorException("Expected " + type,token.LineNumber,token.ColumnNumber);
+        }
+        return token;
+    }
+
+    private boolean match(Token.TokenTypes type){
+        if(!tokens.isEmpty() && tokens.getFirst().Type == type){
+            tokens.removeFirst();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean check(Token.TokenTypes type){
+        return !tokens.isEmpty() && tokens.getFirst().Type == type;
+    }
+
+    private void skipNewLines(){
+        while(!tokens.isEmpty() && tokens.getFirst().Type == Token.TokenTypes.NEWLINE){
+            tokens.removeFirst();
+        }
+    }
+
+    private int peekLine(){
+        if(tokens.isEmpty()){
+            return 0;
+        }
+        return tokens.getFirst().LineNumber;
+    }
+
+    private int peekColumn(){
+        if(tokens.isEmpty()){
+            return 0;
+        }
+        return tokens.getFirst().ColumnNumber;
+    }
 }
