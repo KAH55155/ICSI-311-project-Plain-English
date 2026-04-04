@@ -11,6 +11,141 @@ public class PlainEnglishParser{
         this.tokens = tokensIn;
     }
 
+    public Optional<BoolExpTerm> boolExpTerm() throws SyntaxErrorException {
+        BoolExpTerm term = new BoolExpTerm();
+
+        if (match(Token.TokenTypes.NOT)) {
+            term.not = true;
+            term.notTerm = boolExpTerm();
+            return Optional.of(term);
+        }
+
+        term.boolexpfactor = boolExpFactor();
+
+        while (check(Token.TokenTypes.AND) || check(Token.TokenTypes.OR)) {
+            Token op = tokens.removeFirst();
+            term.theandORor.add(op.Type == Token.TokenTypes.AND ? andORor.and : andORor.or);
+
+            // The assignment/tests imply a list of terms for logical chains
+            Optional<BoolExpTerm> next = boolExpTerm();
+            next.ifPresent(value -> term.boolexpterm.add(value));
+        }
+        return Optional.of(term);
+    }
+
+    public Optional<BoolExpFactor> boolExpFactor() throws SyntaxErrorException {
+        BoolExpFactor factor = new BoolExpFactor();
+
+        // Start by parsing an expression (this handles math like 'numVar % 2')
+        Optional<Expression> lhs = expression();
+        if (lhs.isEmpty()) return Optional.empty();
+
+        if (isCompareOp(peekType())) {
+            factor.lhs = lhs;
+            factor.thecompareOps = Optional.of(mapCompareOp(tokens.removeFirst().Type));
+            factor.rhs = expression();
+        } else {
+            // If there's no comparison operator, it's a VariableReference used as a boolean.
+            // We must extract the VariableReference from the factor within the expression.
+            try {
+                factor.variablereference = lhs.get().term.get(0).factor.get(0).variablereference;
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        }
+
+        return Optional.of(factor);
+    }
+
+    private boolean isCompareOp(Token.TokenTypes type) {
+        return type == Token.TokenTypes.DOUBLEEQUAL || type == Token.TokenTypes.NOTEQUAL ||
+                type == Token.TokenTypes.LESSTHANEQUAL || type == Token.TokenTypes.GREATERTHANEQUAL ||
+                type == Token.TokenTypes.GREATERTHAN || type == Token.TokenTypes.LESSTHAN;
+    }
+
+    private compareOps mapCompareOp(Token.TokenTypes type) {
+        switch (type) {
+            case DOUBLEEQUAL: return compareOps.doubleequal;
+            case NOTEQUAL: return compareOps.notequal;
+            case LESSTHANEQUAL: return compareOps.lessthanequal;
+            case GREATERTHANEQUAL: return compareOps.greaterthanequal;
+            case GREATERTHAN: return compareOps.greaterthan;
+            case LESSTHAN: return compareOps.lessthan;
+            default: throw new RuntimeException("Invalid comparison operator");
+        }
+    }
+
+    private Token.TokenTypes peekType() {
+        return tokens.isEmpty() ? null : tokens.getFirst().Type;
+    }
+
+    public Optional<If> parseIf() throws SyntaxErrorException {
+        if (!match(Token.TokenTypes.IF)) {
+            return Optional.empty();
+        }
+
+        If ifStmt = new If();
+        ifStmt.boolexpterm = boolExpTerm().orElseThrow(() ->
+                new SyntaxErrorException("If missing condition", peekLine(), peekColumn()));
+
+        ifStmt.statementblock = statementBlock().orElseThrow(() ->
+                new SyntaxErrorException("If missing body", peekLine(), peekColumn()));
+
+        // FIX: Skip any newlines that might exist between the 'Dedent' of the If block
+        // and the start of the 'Else' keyword.
+        skipNewLines();
+
+        if (match(Token.TokenTypes.ELSE)) {
+            ifStmt.$else = true;
+            ifStmt.falseCase = statementBlock();
+        }
+        return Optional.of(ifStmt);
+    }
+
+    public Optional<Loop> parseLoop() throws SyntaxErrorException {
+        if (!match(Token.TokenTypes.LOOP)) {
+            return Optional.empty();
+        }
+
+        Loop loopStmt = new Loop();
+        loopStmt.boolexpterm = boolExpTerm().orElseThrow(() ->
+                new SyntaxErrorException("Loop missing condition", peekLine(), peekColumn()));
+
+        loopStmt.statementblock = statementBlock().orElseThrow(() ->
+                new SyntaxErrorException("Loop missing body", peekLine(), peekColumn()));
+
+        return Optional.of(loopStmt);
+    }
+
+    public Optional<FunctionCall> parseFunctionCall() throws SyntaxErrorException {
+        if (!check(Token.TokenTypes.IDENTIFIER)) {
+            return Optional.empty();
+        }
+
+        FunctionCall func = new FunctionCall();
+        func.name = require(Token.TokenTypes.IDENTIFIER).Value.orElseThrow();
+
+        if (match(Token.TokenTypes.OF)) {
+            func.obj = Optional.of(require(Token.TokenTypes.IDENTIFIER).Value.orElseThrow());
+        }
+
+        // Consume 'with' if present
+        match(Token.TokenTypes.WITH);
+
+        // Parse parameters until the end of the statement line
+        while (!check(Token.TokenTypes.NEWLINE) && !check(Token.TokenTypes.DEDENT) && !tokens.isEmpty()) {
+            Optional<Expression> param = expression();
+            if (param.isPresent()) {
+                func.parameter.add(param.get());
+            } else {
+                break;
+            }
+            // Consume optional commas between multiple parameters
+            match(Token.TokenTypes.COMMA);
+        }
+        return Optional.of(func);
+    }
+
     private Field parseField() throws SyntaxErrorException{
 
         Token typeToken = require(Token.TokenTypes.IDENTIFIER);
@@ -141,43 +276,57 @@ public class PlainEnglishParser{
         return Optional.of(paraMeter);
     }
 
-    public Optional<StatementBlock> statementBlock() throws SyntaxErrorException{
-
+    public Optional<StatementBlock> statementBlock() throws SyntaxErrorException {
         require(Token.TokenTypes.NEWLINE);
         require(Token.TokenTypes.INDENT);
 
         StatementBlock block = new StatementBlock();
         skipNewLines();
 
-        while(!check(Token.TokenTypes.DEDENT)){
+        while (!check(Token.TokenTypes.DEDENT)) {
             Optional<Statement> stateMent = statement();
 
-            if(stateMent.isEmpty()){
+            if (stateMent.isEmpty()) {
                 throw new SyntaxErrorException("Statement is expected", peekLine(), peekColumn());
             }
             block.statement.add(stateMent.get());
-            require(Token.TokenTypes.NEWLINE);
+
+            // FIX: Only require NEWLINE if we aren't at a DEDENT yet.
+            // This prevents the error when the block ends.
+            if (check(Token.TokenTypes.NEWLINE)) {
+                require(Token.TokenTypes.NEWLINE);
+            }
+            skipNewLines();
         }
         require(Token.TokenTypes.DEDENT);
 
         return Optional.of(block);
     }
 
-    public Optional<Statement> statement() throws SyntaxErrorException{
+    public Optional<Statement> statement() throws SyntaxErrorException {
+        Statement s = new Statement();
 
-        Optional<Make> make = makeBlock();
-        if(make.isPresent()){
-            Statement StateMent = new Statement();
-            StateMent.make = Optional.of(make.get());
-            return Optional.of(StateMent);
+        if (check(Token.TokenTypes.IF)) {
+            s.$if = parseIf();
+            return Optional.of(s);
+        } else if (check(Token.TokenTypes.LOOP)) {
+            s.loop = parseLoop();
+            return Optional.of(s);
+        } else if (check(Token.TokenTypes.SET)) {
+            s.set = setBlock();
+            return Optional.of(s);
+        } else if (check(Token.TokenTypes.MAKE)) {
+            s.make = makeBlock();
+            return Optional.of(s);
         }
 
-        Optional<Set> set = setBlock();
-        if(set.isPresent()){
-            Statement StateMENT = new Statement();
-            StateMENT.set = Optional.of(set.get());
-            return Optional.of(StateMENT);
+        // If it's not a keyword, try FunctionCall
+        Optional<FunctionCall> funcCall = parseFunctionCall();
+        if (funcCall.isPresent()) {
+            s.functioncall = funcCall;
+            return Optional.of(s);
         }
+
         return Optional.empty();
     }
 
@@ -314,8 +463,8 @@ public class PlainEnglishParser{
         }
 
         if(match(Token.TokenTypes.TRUE)){
-        factor.$true = true;
-        return Optional.of(factor);
+            factor.$true = true;
+            return Optional.of(factor);
         }
         if(match(Token.TokenTypes.FALSE)){
             factor.$false = true;
