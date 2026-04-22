@@ -2,6 +2,8 @@ package PlainEnglish;
 
 import PlainEnglish.AST.*;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Optional;
 import java.util.Stack;
 
 public class Interpreter {
@@ -16,89 +18,216 @@ public class Interpreter {
     public void Start() {
         scopes.push(new HashMap<>());
 
-        for (int i = 0; i < program.method.size(); i++) {
-            DoMethod(program.method.get(i));
+        System.out.println("DEBUG: Total methods found: " + program.method.size());
+        for (Method m : program.method) {
+            System.out.println("DEBUG: Method name='" + m.name + "' params=" + m.parameter.size());
         }
 
+        for (Method m : program.method) {
+            if (m.name.equals("Run") && m.parameter.isEmpty()) {
+                DoMethod(m, new HashMap<>());
+            }
+        }
         scopes.pop();
     }
 
-    public void DoMethod(Method m) {
-        scopes.push(new HashMap<>());
+    // -------------------------
+    // METHOD DISPATCH
+    // -------------------------
 
+    /** Execute a user-defined method, binding args into a fresh scope. */
+    public void DoMethod(Method m, HashMap<String, InterpreterDataType> args) {
+        scopes.push(args);
         DoStatementBlock(m.statementblock);
-
         scopes.pop();
+    }
+
+    // -------------------------
+    // STATEMENTS
+    // -------------------------
+
+    public void DoStatementBlock(StatementBlock block) {
+        for (Statement s : block.statement) {
+            DoStatement(s);
+        }
     }
 
     public void DoStatement(Statement s) {
-
         if (s.make.isPresent()) {
-            Make(s.make.get());
-        }
-        else if (s.set.isPresent()) {
-            Set(s.set.get());
-        }
-        else if (s.functioncall.isPresent()) {
+            DoMake(s.make.get());
+        } else if (s.set.isPresent()) {
+            DoSet(s.set.get());
+        } else if (s.functioncall.isPresent()) {
             DoFunctionCall(s.functioncall.get());
-        }
-        else if (s.$if.isPresent()) {
+        } else if (s.$if.isPresent()) {
             DoIf(s.$if.get());
-        }
-        else if (s.loop.isPresent()) {
+        } else if (s.loop.isPresent()) {
             DoLoop(s.loop.get());
         }
     }
 
+    // -------------------------
+    // FUNCTION CALLS
+    // -------------------------
+
     void DoFunctionCall(FunctionCall f) {
 
+        // Built-in: Print
         if (f.name.equals("Print")) {
-            for (InterpreterDataType val : scopes.peek().values()) {
+            for (Expression param : f.parameter) {
+                InterpreterDataType val = DoExpression(param);
                 System.out.println(val);
             }
+            return;
         }
+
+        // Look for a user-defined method matching the name (and optional class)
+        Method target = findMethod(f.name, f.obj);
+
+        if (target == null) {
+            throw new RuntimeException("Method not found: " + f.name);
+        }
+
+        // Build argument map: bind positional expressions to parameter names
+        HashMap<String, InterpreterDataType> args = new HashMap<>();
+
+        for (int i = 0; i < target.parameter.size(); i++) {
+            Parameter p = target.parameter.get(i);
+
+            // Determine the variable name used inside the method body
+            String argName = p.nameOverride.isPresent() ? p.nameOverride.get() : p.paramType;
+
+            if (i < f.parameter.size()) {
+                InterpreterDataType val = DoExpression(f.parameter.get(i));
+                args.put(argName, val);
+            }
+        }
+
+        DoMethod(target, args);
     }
 
-    public void DoIf(If i) {
+    /** Find a method by name (and optionally class name) in the program. */
+    private Method findMethod(String name, Optional<String> obj) {
+        for (Method m : program.method) {
+            if (!m.name.equals(name)) continue;
+            if (obj.isPresent()) {
+                if (m.className.isPresent() && m.className.get().equals(obj.get())) return m;
+            } else {
+                return m;
+            }
+        }
+        return null;
+    }
 
+    // -------------------------
+    // IF / LOOP
+    // -------------------------
+
+    public void DoIf(If i) {
         if (evaluateBool(i.boolexpterm)) {
             DoStatementBlock(i.statementblock);
-        }
-        else if (i.falseCase.isPresent()) {
+        } else if (i.$else && i.falseCase.isPresent()) {
             DoStatementBlock(i.falseCase.get());
         }
     }
 
     public void DoLoop(Loop l) {
-
         while (evaluateBool(l.boolexpterm)) {
             DoStatementBlock(l.statementblock);
         }
     }
 
-    public void Set(Set s) {
+    // -------------------------
+    // VARIABLES
+    // -------------------------
 
+    public void DoSet(Set s) {
         String name = s.variablereference.name;
         InterpreterDataType value = DoExpression(s.expression);
 
+        // If the reference has an object (field access), update the field
+        if (s.variablereference.of && s.variablereference.$object.isPresent()) {
+            String objName = s.variablereference.$object.get();
+            InterpreterDataType obj = lookup(objName);
+            if (obj instanceof ObjectInterpreterDataType) {
+                ((ObjectInterpreterDataType) obj).fields.put(name, value);
+                return;
+            }
+        }
+
+        // Update existing variable in whichever scope it lives, or set in current scope
+        for (int i = scopes.size() - 1; i >= 0; i--) {
+            if (scopes.get(i).containsKey(name)) {
+                scopes.get(i).put(name, value);
+                return;
+            }
+        }
         scopes.peek().put(name, value);
     }
 
-    InterpreterDataType DoExpression(Expression e) {
+    public void DoMake(Make m) {
+        InterpreterDataType value;
 
+        switch (m.type) {
+            case "number":
+                value = new NumberInterpreterDataType(0);
+                break;
+            case "string":
+                value = new StringInterpreterDataType("");
+                break;
+            case "boolean":
+                value = new BooleanInterpreterDataType(false);
+                break;
+            default:
+                // User-defined type: create an ObjectInterpreterDataType and initialise fields
+                value = new ObjectInterpreterDataType(m.type);
+                // Find the typedef and populate fields with defaults
+                for (TypeDef td : program.typedef) {
+                    if (td.name.equals(m.type)) {
+                        for (Field f : td.field) {
+                            InterpreterDataType fieldDefault = defaultForType(f.type);
+                            ((ObjectInterpreterDataType) value).fields.put(f.name, fieldDefault);
+                        }
+                        break;
+                    }
+                }
+                break;
+        }
+
+        scopes.peek().put(m.name, value);
+    }
+
+    private InterpreterDataType defaultForType(String type) {
+        switch (type) {
+            case "number":  return new NumberInterpreterDataType(0);
+            case "string":  return new StringInterpreterDataType("");
+            case "boolean": return new BooleanInterpreterDataType(false);
+            default:        return new ObjectInterpreterDataType(type);
+        }
+    }
+
+    // -------------------------
+    // EXPRESSIONS
+    // -------------------------
+
+    InterpreterDataType DoExpression(Expression e) {
         InterpreterDataType result = DoTerm(e.term.get(0));
 
         for (int i = 1; i < e.term.size(); i++) {
-
             InterpreterDataType next = DoTerm(e.term.get(i));
+            plusORhyphen op = e.theplusORhyphen.get(i - 1);
 
-            float a = ((NumberInterpreterDataType) result).value;
-            float b = ((NumberInterpreterDataType) next).value;
-
-            if (e.theplusORhyphen.get(i - 1) == plusORhyphen.plus) {
-                result = new NumberInterpreterDataType(a + b);
+            // String concatenation with +
+            if (result instanceof StringInterpreterDataType || next instanceof StringInterpreterDataType) {
+                if (op == plusORhyphen.plus) {
+                    result = new StringInterpreterDataType(result.toString() + next.toString());
+                } else {
+                    throw new RuntimeException("Cannot subtract strings");
+                }
             } else {
-                result = new NumberInterpreterDataType(a - b);
+                float a = toFloat(result);
+                float b = toFloat(next);
+                result = new NumberInterpreterDataType(op == plusORhyphen.plus ? a + b : a - b);
             }
         }
 
@@ -106,29 +235,17 @@ public class Interpreter {
     }
 
     InterpreterDataType DoTerm(Term t) {
-
         InterpreterDataType result = DoFactor(t.factor.get(0));
 
         for (int i = 1; i < t.factor.size(); i++) {
-
             InterpreterDataType next = DoFactor(t.factor.get(i));
-
-            float a = ((NumberInterpreterDataType) result).value;
-            float b = ((NumberInterpreterDataType) next).value;
+            float a = toFloat(result);
+            float b = toFloat(next);
 
             switch (t.theasteriskORslashORpercent.get(i - 1)) {
-
-                case asterisk:
-                    result = new NumberInterpreterDataType(a * b);
-                    break;
-
-                case slash:
-                    result = new NumberInterpreterDataType(a / b);
-                    break;
-
-                case percent:
-                    result = new NumberInterpreterDataType(a % b);
-                    break;
+                case asterisk: result = new NumberInterpreterDataType(a * b); break;
+                case slash:    result = new NumberInterpreterDataType(a / b); break;
+                case percent:  result = new NumberInterpreterDataType(a % b); break;
             }
         }
 
@@ -136,7 +253,6 @@ public class Interpreter {
     }
 
     InterpreterDataType DoFactor(Factor f) {
-
         if (f.number.isPresent()) {
             return new NumberInterpreterDataType(Float.parseFloat(f.number.get()));
         }
@@ -145,32 +261,44 @@ public class Interpreter {
             return new StringInterpreterDataType(f.stringliteral.get());
         }
 
-        if (f.$true) return new BooleanInterpreterDataType(true);
+        if (f.characterliteral.isPresent()) {
+            return new StringInterpreterDataType(String.valueOf(f.characterliteral.get()));
+        }
+
+        if (f.$true)  return new BooleanInterpreterDataType(true);
         if (f.$false) return new BooleanInterpreterDataType(false);
 
         if (f.variablereference.isPresent()) {
-            return lookup(f.variablereference.get().name);
+            return resolveVariableReference(f.variablereference.get());
         }
 
         if (f.expression.isPresent()) {
             return DoExpression(f.expression.get());
         }
 
-        return null;
+        throw new RuntimeException("Empty factor");
     }
 
-    public void Make(Make m) {
-        scopes.peek().put(m.name, new NumberInterpreterDataType(0));
-    }
-
-    private void DoStatementBlock(StatementBlock block) {
-        for (int i = 0; i < block.statement.size(); i++) {
-            DoStatement(block.statement.get(i));
+    private InterpreterDataType resolveVariableReference(VariableReference ref) {
+        if (ref.of && ref.$object.isPresent()) {
+            // "field of object"
+            InterpreterDataType obj = lookup(ref.$object.get());
+            if (obj instanceof ObjectInterpreterDataType) {
+                ObjectInterpreterDataType o = (ObjectInterpreterDataType) obj;
+                if (o.fields.containsKey(ref.name)) {
+                    return o.fields.get(ref.name);
+                }
+            }
+            throw new RuntimeException("Field not found: " + ref.name + " of " + ref.$object.get());
         }
+        return lookup(ref.name);
     }
+
+    // -------------------------
+    // BOOLEAN LOGIC
+    // -------------------------
 
     public boolean evaluateBool(BoolExpTerm b) {
-
         if (b.not) {
             return !evaluateBool(b.notTerm.get());
         }
@@ -178,9 +306,7 @@ public class Interpreter {
         boolean result = evaluateBoolFactor(b.boolexpfactor.get());
 
         for (int i = 0; i < b.theandORor.size(); i++) {
-
             boolean next = evaluateBool(b.boolexpterm.get(i));
-
             if (b.theandORor.get(i) == andORor.and) {
                 result = result && next;
             } else {
@@ -194,36 +320,71 @@ public class Interpreter {
     public boolean evaluateBoolFactor(BoolExpFactor b) {
 
         if (b.thecompareOps.isPresent()) {
+            InterpreterDataType leftVal  = DoExpression(b.lhs.get());
+            InterpreterDataType rightVal = DoExpression(b.rhs.get());
 
-            float left = ((NumberInterpreterDataType) DoExpression(b.lhs.get())).value;
-            float right = ((NumberInterpreterDataType) DoExpression(b.rhs.get())).value;
+            // String equality / inequality
+            if (leftVal instanceof StringInterpreterDataType || rightVal instanceof StringInterpreterDataType) {
+                String ls = leftVal.toString();
+                String rs = rightVal.toString();
+                switch (b.thecompareOps.get()) {
+                    case doubleequal: return ls.equals(rs);
+                    case notequal:    return !ls.equals(rs);
+                    default: throw new RuntimeException("Strings only support == and !=");
+                }
+            }
 
+            // Numeric comparisons
+            float left  = toFloat(leftVal);
+            float right = toFloat(rightVal);
             switch (b.thecompareOps.get()) {
-                case doubleequal: return left == right;
-                case notequal: return left != right;
-                case lessthan: return left < right;
-                case greaterthan: return left > right;
-                case lessthanequal: return left <= right;
-                case greaterthanequal: return left >= right;
+                case doubleequal:       return left == right;
+                case notequal:          return left != right;
+                case lessthan:          return left <  right;
+                case greaterthan:       return left >  right;
+                case lessthanequal:     return left <= right;
+                case greaterthanequal:  return left >= right;
             }
         }
 
         if (b.variablereference.isPresent()) {
-            return ((BooleanInterpreterDataType) lookup(
-                    b.variablereference.get().name)).value;
+            InterpreterDataType val = resolveVariableReference(b.variablereference.get());
+            if (val instanceof BooleanInterpreterDataType) {
+                return ((BooleanInterpreterDataType) val).value;
+            }
+            // Treat non-zero numbers as true
+            if (val instanceof NumberInterpreterDataType) {
+                return ((NumberInterpreterDataType) val).value != 0;
+            }
         }
 
         return false;
     }
 
-    private InterpreterDataType lookup(String name) {
+    // -------------------------
+    // HELPERS
+    // -------------------------
 
+    private float toFloat(InterpreterDataType idt) {
+        if (idt instanceof NumberInterpreterDataType) {
+            return ((NumberInterpreterDataType) idt).value;
+        }
+        if (idt instanceof BooleanInterpreterDataType) {
+            return ((BooleanInterpreterDataType) idt).value ? 1f : 0f;
+        }
+        try {
+            return Float.parseFloat(idt.toString());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Cannot convert to number: " + idt);
+        }
+    }
+
+    private InterpreterDataType lookup(String name) {
         for (int i = scopes.size() - 1; i >= 0; i--) {
             if (scopes.get(i).containsKey(name)) {
                 return scopes.get(i).get(name);
             }
         }
-
-        return null;
+        throw new RuntimeException("Variable not found: " + name);
     }
 }
