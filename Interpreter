@@ -1,0 +1,229 @@
+package PlainEnglish;
+
+import PlainEnglish.AST.*;
+import java.util.HashMap;
+import java.util.Stack;
+
+public class Interpreter {
+
+    private final Program program;
+    private Stack<HashMap<String, InterpreterDataType>> scopes = new Stack<>();
+
+    public Interpreter(Program prog) {
+        program = prog;
+    }
+
+    public void Start() {
+        scopes.push(new HashMap<>());
+
+        for (int i = 0; i < program.method.size(); i++) {
+            DoMethod(program.method.get(i));
+        }
+
+        scopes.pop();
+    }
+
+    public void DoMethod(Method m) {
+        scopes.push(new HashMap<>());
+
+        DoStatementBlock(m.statementblock);
+
+        scopes.pop();
+    }
+
+    public void DoStatement(Statement s) {
+
+        if (s.make.isPresent()) {
+            Make(s.make.get());
+        }
+        else if (s.set.isPresent()) {
+            Set(s.set.get());
+        }
+        else if (s.functioncall.isPresent()) {
+            DoFunctionCall(s.functioncall.get());
+        }
+        else if (s.$if.isPresent()) {
+            DoIf(s.$if.get());
+        }
+        else if (s.loop.isPresent()) {
+            DoLoop(s.loop.get());
+        }
+    }
+
+    void DoFunctionCall(FunctionCall f) {
+
+        if (f.name.equals("Print")) {
+            for (InterpreterDataType val : scopes.peek().values()) {
+                System.out.println(val);
+            }
+        }
+    }
+
+    public void DoIf(If i) {
+
+        if (evaluateBool(i.boolexpterm)) {
+            DoStatementBlock(i.statementblock);
+        }
+        else if (i.falseCase.isPresent()) {
+            DoStatementBlock(i.falseCase.get());
+        }
+    }
+
+    public void DoLoop(Loop l) {
+
+        while (evaluateBool(l.boolexpterm)) {
+            DoStatementBlock(l.statementblock);
+        }
+    }
+
+    public void Set(Set s) {
+
+        String name = s.variablereference.name;
+        InterpreterDataType value = DoExpression(s.expression);
+
+        scopes.peek().put(name, value);
+    }
+
+    InterpreterDataType DoExpression(Expression e) {
+
+        InterpreterDataType result = DoTerm(e.term.get(0));
+
+        for (int i = 1; i < e.term.size(); i++) {
+
+            InterpreterDataType next = DoTerm(e.term.get(i));
+
+            float a = ((NumberInterpreterDataType) result).value;
+            float b = ((NumberInterpreterDataType) next).value;
+
+            if (e.theplusORhyphen.get(i - 1) == plusORhyphen.plus) {
+                result = new NumberInterpreterDataType(a + b);
+            } else {
+                result = new NumberInterpreterDataType(a - b);
+            }
+        }
+
+        return result;
+    }
+
+    InterpreterDataType DoTerm(Term t) {
+
+        InterpreterDataType result = DoFactor(t.factor.get(0));
+
+        for (int i = 1; i < t.factor.size(); i++) {
+
+            InterpreterDataType next = DoFactor(t.factor.get(i));
+
+            float a = ((NumberInterpreterDataType) result).value;
+            float b = ((NumberInterpreterDataType) next).value;
+
+            switch (t.theasteriskORslashORpercent.get(i - 1)) {
+
+                case asterisk:
+                    result = new NumberInterpreterDataType(a * b);
+                    break;
+
+                case slash:
+                    result = new NumberInterpreterDataType(a / b);
+                    break;
+
+                case percent:
+                    result = new NumberInterpreterDataType(a % b);
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    InterpreterDataType DoFactor(Factor f) {
+
+        if (f.number.isPresent()) {
+            return new NumberInterpreterDataType(Float.parseFloat(f.number.get()));
+        }
+
+        if (f.stringliteral.isPresent()) {
+            return new StringInterpreterDataType(f.stringliteral.get());
+        }
+
+        if (f.$true) return new BooleanInterpreterDataType(true);
+        if (f.$false) return new BooleanInterpreterDataType(false);
+
+        if (f.variablereference.isPresent()) {
+            return lookup(f.variablereference.get().name);
+        }
+
+        if (f.expression.isPresent()) {
+            return DoExpression(f.expression.get());
+        }
+
+        return null;
+    }
+
+    public void Make(Make m) {
+        scopes.peek().put(m.name, new NumberInterpreterDataType(0));
+    }
+
+    private void DoStatementBlock(StatementBlock block) {
+        for (int i = 0; i < block.statement.size(); i++) {
+            DoStatement(block.statement.get(i));
+        }
+    }
+
+    public boolean evaluateBool(BoolExpTerm b) {
+
+        if (b.not) {
+            return !evaluateBool(b.notTerm.get());
+        }
+
+        boolean result = evaluateBoolFactor(b.boolexpfactor.get());
+
+        for (int i = 0; i < b.theandORor.size(); i++) {
+
+            boolean next = evaluateBool(b.boolexpterm.get(i));
+
+            if (b.theandORor.get(i) == andORor.and) {
+                result = result && next;
+            } else {
+                result = result || next;
+            }
+        }
+
+        return result;
+    }
+
+    public boolean evaluateBoolFactor(BoolExpFactor b) {
+
+        if (b.thecompareOps.isPresent()) {
+
+            float left = ((NumberInterpreterDataType) DoExpression(b.lhs.get())).value;
+            float right = ((NumberInterpreterDataType) DoExpression(b.rhs.get())).value;
+
+            switch (b.thecompareOps.get()) {
+                case doubleequal: return left == right;
+                case notequal: return left != right;
+                case lessthan: return left < right;
+                case greaterthan: return left > right;
+                case lessthanequal: return left <= right;
+                case greaterthanequal: return left >= right;
+            }
+        }
+
+        if (b.variablereference.isPresent()) {
+            return ((BooleanInterpreterDataType) lookup(
+                    b.variablereference.get().name)).value;
+        }
+
+        return false;
+    }
+
+    private InterpreterDataType lookup(String name) {
+
+        for (int i = scopes.size() - 1; i >= 0; i--) {
+            if (scopes.get(i).containsKey(name)) {
+                return scopes.get(i).get(name);
+            }
+        }
+
+        return null;
+    }
+}
