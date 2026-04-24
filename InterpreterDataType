@@ -1,0 +1,20 @@
+package PlainEnglish;
+
+public abstract class InterpreterDataType {
+
+    public Object value;
+
+    public InterpreterDataType() {
+        this.value = null;
+    }
+
+    public InterpreterDataType(Object value) {
+        this.value = value;
+    }
+
+
+    public String toString() {
+        return String.valueOf(value);
+    }
+}
+
