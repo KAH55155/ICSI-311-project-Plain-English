@@ -1,0 +1,13 @@
+package PlainEnglish;
+
+public class BooleanInterpreterDataType extends InterpreterDataType {
+    public boolean value=false;
+
+    public BooleanInterpreterDataType(boolean value) {
+        this.value = value;
+    }
+
+    public String toString() {
+        return String.valueOf(value);
+    }
+}
