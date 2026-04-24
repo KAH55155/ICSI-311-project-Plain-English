@@ -18,16 +18,13 @@ public class Interpreter {
     public void Start() {
         scopes.push(new HashMap<>());
 
-        System.out.println("DEBUG: Total methods found: " + program.method.size());
-        for (Method m : program.method) {
-            System.out.println("DEBUG: Method name='" + m.name + "' params=" + m.parameter.size());
-        }
-
+        // Find and run every method named "Run"
         for (Method m : program.method) {
             if (m.name.equals("Run") && m.parameter.isEmpty()) {
                 DoMethod(m, new HashMap<>());
             }
         }
+
         scopes.pop();
     }
 
@@ -91,6 +88,10 @@ public class Interpreter {
         // Build argument map: bind positional expressions to parameter names
         HashMap<String, InterpreterDataType> args = new HashMap<>();
 
+        // Track which call parameters are simple variable references (for write-back)
+        // callerVarNames[i] = the caller's variable name for parameter i, or null if not a variable
+        String[] callerVarNames = new String[target.parameter.size()];
+
         for (int i = 0; i < target.parameter.size(); i++) {
             Parameter p = target.parameter.get(i);
 
@@ -98,12 +99,40 @@ public class Interpreter {
             String argName = p.nameOverride.isPresent() ? p.nameOverride.get() : p.paramType;
 
             if (i < f.parameter.size()) {
-                InterpreterDataType val = DoExpression(f.parameter.get(i));
+                Expression argExpr = f.parameter.get(i);
+                InterpreterDataType val = DoExpression(argExpr);
                 args.put(argName, val);
+
+                // Check if the argument is a simple variable reference (enables write-back)
+                try {
+                    Term t = argExpr.term.get(0);
+                    if (argExpr.term.size() == 1 && t.factor.size() == 1) {
+                        Factor fac = t.factor.get(0);
+                        if (fac.variablereference.isPresent()) {
+                            callerVarNames[i] = fac.variablereference.get().name;
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
         }
 
         DoMethod(target, args);
+
+        // Write back: copy final parameter values back to caller's variables (pass-by-reference)
+        for (int i = 0; i < target.parameter.size(); i++) {
+            if (callerVarNames[i] != null) {
+                Parameter p = target.parameter.get(i);
+                String argName = p.nameOverride.isPresent() ? p.nameOverride.get() : p.paramType;
+                InterpreterDataType finalVal = args.get(argName);
+                // Update the caller's variable in the scope below the one we just popped
+                for (int s = scopes.size() - 1; s >= 0; s--) {
+                    if (scopes.get(s).containsKey(callerVarNames[i])) {
+                        scopes.get(s).put(callerVarNames[i], finalVal);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /** Find a method by name (and optionally class name) in the program. */
@@ -338,8 +367,8 @@ public class Interpreter {
             float left  = toFloat(leftVal);
             float right = toFloat(rightVal);
             switch (b.thecompareOps.get()) {
-                case doubleequal:       return left == right;
-                case notequal:          return left != right;
+                case doubleequal:       return Math.abs(left - right) < 0.0001f;
+                case notequal:          return Math.abs(left - right) >= 0.0001f;
                 case lessthan:          return left <  right;
                 case greaterthan:       return left >  right;
                 case lessthanequal:     return left <= right;
