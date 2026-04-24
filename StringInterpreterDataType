@@ -1,0 +1,14 @@
+package PlainEnglish;
+
+public class StringInterpreterDataType extends InterpreterDataType {
+    public String value="";
+
+    public StringInterpreterDataType(String value) {
+        super(value);
+        this.value = value;
+    }
+
+    public String toString() {
+        return value;
+    }
+}
