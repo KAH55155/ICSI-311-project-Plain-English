@@ -16,7 +16,9 @@ public class Interpreter {
     public void Start() {
         scopes.push(new HashMap<>());
 
-        for(Method m: program.method){
+        for(int i =0; i<program.method.size(); i++){
+            Method m = program.method.get(i);
+
             if(m.name.equals("Run") && m.parameter.isEmpty()){
                 DoMethod(m, new HashMap<>());
             }
@@ -30,8 +32,9 @@ public class Interpreter {
         }
 
         public void DoStatementBlock(StatementBlock block){
-        for(Statement s: block.statement){
-            DoStatement(s);
+
+        for(int i =0; i < block.statement.size(); i++){
+            DoStatement(block.statement.get(i));
         }
     }
         public void DoStatement(Statement s){
@@ -59,32 +62,32 @@ public class Interpreter {
                 return;
             }
 
-            // Look for a user-defined method matching the name (and optional class)
             Method target = findMethod(f.name, f.obj);
 
             if (target == null) {
                 throw new RuntimeException("Method not found: " + f.name);
             }
 
-            // Build argument map: bind positional expressions to parameter names
             HashMap<String, InterpreterDataType> args = new HashMap<>();
 
-            // Track which call parameters are simple variable references (for write-back)
-            // callerVarNames[i] = the caller's variable name for parameter i, or null if not a variable
             String[] callerVarNames = new String[target.parameter.size()];
 
             for (int i = 0; i < target.parameter.size(); i++) {
                 Parameter p = target.parameter.get(i);
 
-                // Determine the variable name used inside the method body
-                String argName = p.nameOverride.isPresent() ? p.nameOverride.get() : p.paramType;
+                String argName;
+
+                if(p.nameOverride.isPresent()){
+                    argName = p.nameOverride.get();
+                }else{
+                    argName = p.paramType;
+                }
 
                 if (i < f.parameter.size()) {
                     Expression argExpr = f.parameter.get(i);
                     InterpreterDataType val = DoExpression(argExpr);
                     args.put(argName, val);
 
-                    // Check if the argument is a simple variable reference (enables write-back)
                     try {
                         Term t = argExpr.term.get(0);
                         if (argExpr.term.size() == 1 && t.factor.size() == 1) {
@@ -99,13 +102,20 @@ public class Interpreter {
 
             DoMethod(target, args);
 
-            // Write back: copy final parameter values back to caller's variables (pass-by-reference)
             for (int i = 0; i < target.parameter.size(); i++) {
+
                 if (callerVarNames[i] != null) {
                     Parameter p = target.parameter.get(i);
-                    String argName = p.nameOverride.isPresent() ? p.nameOverride.get() : p.paramType;
+                    String argName;
+
+                    if(p.nameOverride.isPresent()){
+                        argName = p.nameOverride.get();
+                    }else{
+                        argName = p.paramType;
+                    }
+
                     InterpreterDataType finalVal = args.get(argName);
-                    // Update the caller's variable in the scope below the one we just popped
+
                     for (int s = scopes.size() - 1; s >= 0; s--) {
                         if (scopes.get(s).containsKey(callerVarNames[i])) {
                             scopes.get(s).put(callerVarNames[i], finalVal);
@@ -119,8 +129,13 @@ public class Interpreter {
 
         private Method findMethod(String name, Optional<String> obj){
 
-            for (Method m : program.method) {
-                if (!m.name.equals(name)) continue;
+            for (int i =0; i < program.method.size(); i++) {
+
+                Method m = program.method.get(i);
+
+                if (!m.name.equals(name)){
+                    continue;
+                }
                 if (obj.isPresent()) {
                     if (m.className.isPresent() && m.className.get().equals(obj.get())){
                         return m;
@@ -189,9 +204,15 @@ public class Interpreter {
 
                     value = new ObjectInterpreterDataType();
 
-                    for (TypeDef td : program.typedef) {
+                    for (int i =0; i < program.typedef.size(); i++) {
+
+                        TypeDef td = program.typedef.get(i);
+
                         if (td.name.equals(m.type)) {
-                            for (Field f : td.field) {
+                            for (int j =0; j < td.field.size(); j++) {
+
+                                Field f = td.field.get(j);
+
                                 InterpreterDataType fieldDefault = defaultForType(f.type);
                                 ((ObjectInterpreterDataType) value).fields.put(f.name, fieldDefault);
                             }
@@ -200,18 +221,21 @@ public class Interpreter {
                     }
                     break;
             }
-
             scopes.peek().put(m.name, value);
         }
 
         private InterpreterDataType defaultForType(String type){
 
-            switch (type) {
-                case "number":  return new NumberInterpreterDataType(0);
-                case "string":  return new StringInterpreterDataType("");
-                case "boolean": return new BooleanInterpreterDataType(false);
-                default:        return new ObjectInterpreterDataType();
+            if (type.equals("number")) {
+                return new NumberInterpreterDataType(0);
+
+            } else if (type.equals("string")) {
+                return new StringInterpreterDataType("");
+
+            } else if (type.equals("boolean")) {
+                return new BooleanInterpreterDataType(false);
             }
+            return new ObjectInterpreterDataType();
         }
 
         InterpreterDataType DoExpression(Expression e){
@@ -222,7 +246,6 @@ public class Interpreter {
                 InterpreterDataType next = DoTerm(e.term.get(i));
                 plusORhyphen op = e.theplusORhyphen.get(i - 1);
 
-                // String concatenation with +
                 if (result instanceof StringInterpreterDataType || next instanceof StringInterpreterDataType) {
                     if (op == plusORhyphen.plus) {
                         result = new StringInterpreterDataType(result.toString() + next.toString());
@@ -232,10 +255,14 @@ public class Interpreter {
                 } else {
                     float a = toFloat(result);
                     float b = toFloat(next);
-                    result = new NumberInterpreterDataType(op == plusORhyphen.plus ? a + b : a - b);
+
+                    if(op == plusORhyphen.plus) {
+                        result = new NumberInterpreterDataType(a + b);
+                    }else{
+                        result = new NumberInterpreterDataType(a - b);
+                    }
                 }
             }
-
             return result;
         }
 
@@ -248,13 +275,18 @@ public class Interpreter {
                 float a = toFloat(result);
                 float b = toFloat(next);
 
-                switch (t.theasteriskORslashORpercent.get(i - 1)) {
-                    case asterisk: result = new NumberInterpreterDataType(a * b); break;
-                    case slash:    result = new NumberInterpreterDataType(a / b); break;
-                    case percent:  result = new NumberInterpreterDataType(a % b); break;
+                asteriskORslashORpercent op = t.theasteriskORslashORpercent.get(i - 1);
+
+                if (op == asteriskORslashORpercent.asterisk) {
+                    result = new NumberInterpreterDataType(a * b);
+
+                } else if (op == asteriskORslashORpercent.slash) {
+                    result = new NumberInterpreterDataType(a / b);
+
+                } else {
+                    result = new NumberInterpreterDataType(a % b);
                 }
             }
-
             return result;
         }
 
@@ -263,26 +295,24 @@ public class Interpreter {
             if (f.number.isPresent()) {
                 return new NumberInterpreterDataType(Float.parseFloat(f.number.get()));
             }
-
             if (f.stringliteral.isPresent()) {
                 return new StringInterpreterDataType(f.stringliteral.get());
             }
-
             if (f.characterliteral.isPresent()) {
                 return new StringInterpreterDataType(String.valueOf(f.characterliteral.get()));
             }
-
-            if (f.$true)  return new BooleanInterpreterDataType(true);
-            if (f.$false) return new BooleanInterpreterDataType(false);
-
+            if (f.$true) {
+                return new BooleanInterpreterDataType(true);
+            }
+            if (f.$false){
+                return new BooleanInterpreterDataType(false);
+            }
             if (f.variablereference.isPresent()) {
                 return fixVariableReference(f.variablereference.get());
             }
-
             if (f.expression.isPresent()) {
                 return DoExpression(f.expression.get());
             }
-
             throw new RuntimeException("Empty factor");
         }
 
@@ -297,7 +327,7 @@ public class Interpreter {
                         return o.fields.get(ref.name);
                     }
                 }
-                throw new RuntimeException("Field not found: " + ref.name + " of " + ref.$object.get());
+                throw new RuntimeException("Field is not found: " + ref.name + " of " + ref.$object.get());
             }
             return lookup(ref.name);
         }
@@ -327,27 +357,39 @@ public class Interpreter {
                 InterpreterDataType leftVal  = DoExpression(b.lhs.get());
                 InterpreterDataType rightVal = DoExpression(b.rhs.get());
 
-                // String equality / inequality
                 if (leftVal instanceof StringInterpreterDataType || rightVal instanceof StringInterpreterDataType) {
                     String ls = leftVal.toString();
                     String rs = rightVal.toString();
-                    switch (b.thecompareOps.get()) {
-                        case doubleequal: return ls.equals(rs);
-                        case notequal:    return !ls.equals(rs);
-                        default: throw new RuntimeException("Strings only support == and !=");
+
+                    if (b.thecompareOps.get() == compareOps.doubleequal) {
+                        return ls.equals(rs);
+                    } else if (b.thecompareOps.get() == compareOps.notequal) {
+                        return !ls.equals(rs);
+                    } else {
+                        throw new RuntimeException("Strings only support == and !=");
                     }
                 }
 
-                // Numeric comparisons
                 float left  = toFloat(leftVal);
                 float right = toFloat(rightVal);
-                switch (b.thecompareOps.get()) {
-                    case doubleequal:       return Math.abs(left - right) < 0.0001f;
-                    case notequal:          return Math.abs(left - right) >= 0.0001f;
-                    case lessthan:          return left <  right;
-                    case greaterthan:       return left >  right;
-                    case lessthanequal:     return left <= right;
-                    case greaterthanequal:  return left >= right;
+
+                if (b.thecompareOps.get() == compareOps.doubleequal) {
+                    return Math.abs(left - right) < 0.0001f;
+
+                } else if (b.thecompareOps.get() == compareOps.notequal) {
+                    return Math.abs(left - right) >= 0.0001f;
+
+                } else if (b.thecompareOps.get() == compareOps.lessthan) {
+                    return left < right;
+
+                } else if (b.thecompareOps.get() == compareOps.greaterthan) {
+                    return left > right;
+
+                } else if (b.thecompareOps.get() == compareOps.lessthanequal) {
+                    return left <= right;
+
+                } else {
+                    return left >= right;
                 }
             }
 
@@ -356,12 +398,11 @@ public class Interpreter {
                 if (val instanceof BooleanInterpreterDataType) {
                     return ((BooleanInterpreterDataType) val).value;
                 }
-                // Treat non-zero numbers as true
+
                 if (val instanceof NumberInterpreterDataType) {
                     return ((NumberInterpreterDataType) val).value != 0;
                 }
             }
-
             return false;
         }
 
@@ -372,7 +413,11 @@ public class Interpreter {
         }
 
         if(IDT instanceof BooleanInterpreterDataType){
-            return ((BooleanInterpreterDataType) IDT).value ? 1f : 0f;
+            if (((BooleanInterpreterDataType) IDT).value) {
+                return 1f;
+            } else {
+                return 0f;
+            }
         }
 
         try{
